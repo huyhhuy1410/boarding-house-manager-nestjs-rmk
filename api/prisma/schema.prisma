@@ -1,0 +1,240 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+enum RoomStatus {
+  VACANT
+  OCCUPIED
+}
+
+enum ContractStatus {
+  ACTIVE
+  ENDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  VOID
+}
+
+enum InvoiceItemType {
+  RENT
+  ELECTRICITY
+  WATER
+  OTHER
+}
+
+enum MaintenanceRequestStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CANCELLED
+}
+
+enum MaintenanceRequestChargeTo {
+  TENANT
+  OWNER
+}
+
+enum ExpenseCategory {
+  MAINTENANCE
+  UTILITIES
+  OTHER
+}
+
+model User {
+  id             String          @id @default(cuid())
+  authUserId     String          @unique
+  name           String
+  email          String          @unique
+  role           UserRole        @default(STAFF)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  boardingHouses BoardingHouse[]
+  tenants        Tenant[]
+}
+
+model BoardingHouse {
+  id                   String   @id @default(cuid())
+  name                 String
+  address              String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  rooms                Room[]
+  ownerId              String
+  electricityUnitPrice Int      @default(3500)
+  waterUnitPrice       Int      @default(30000)
+
+  owner    User      @relation(fields: [ownerId], references: [id])
+  expenses Expense[]
+}
+
+model Room {
+  id         String     @id @default(cuid())
+  code       String
+  status     RoomStatus @default(VACANT)
+  rentAmount Int
+  houseId    String
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  house               BoardingHouse        @relation(fields: [houseId], references: [id])
+  contracts           Contract[]
+  meterReadings       MeterReading[]
+  maintenanceRequests MaintenanceRequest[]
+
+  @@unique([code, houseId])
+}
+
+model MeterReading {
+  id          String   @id @default(cuid())
+  roomId      String
+  month       Int
+  year        Int
+  electricity Int
+  water       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  room Room @relation(fields: [roomId], references: [id])
+
+  @@unique([roomId, month, year])
+  @@index([roomId, year, month])
+}
+
+model Tenant {
+  id                  String               @id @default(cuid())
+  ownerId             String
+  name                String
+  phone               String
+  identityNumber      String?              @unique
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  owner               User                 @relation(fields: [ownerId], references: [id])
+  contracts           Contract[]
+  maintenanceRequests MaintenanceRequest[]
+
+  @@index([ownerId])
+}
+
+model Contract {
+  id        String         @id @default(cuid())
+  roomId    String
+  tenantId  String
+  startsAt  DateTime
+  endsAt    DateTime?
+  deposit   Int            @default(0)
+  status    ContractStatus @default(ACTIVE)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  room     Room      @relation(fields: [roomId], references: [id])
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  invoices Invoice[]
+
+  @@index([roomId, status])
+  @@index([tenantId, status])
+}
+
+model Invoice {
+  id         String        @id @default(cuid())
+  contractId String
+  month      Int
+  year       Int
+  status     InvoiceStatus @default(DRAFT)
+
+  rentAmount           Int
+  electricityUsage     Int
+  electricityUnitPrice Int
+  waterUsage           Int
+  waterUnitPrice       Int
+  total                Int
+
+  issuedAt  DateTime?
+  dueAt     DateTime?
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  contract Contract      @relation(fields: [contractId], references: [id])
+  items    InvoiceItem[]
+
+  @@unique([contractId, month, year])
+  @@index([contractId, status])
+}
+
+model InvoiceItem {
+  id          String          @id @default(cuid())
+  invoiceId   String
+  type        InvoiceItemType
+  description String?
+  quantity    Int
+  unitPrice   Int
+  amount      Int
+  createdAt   DateTime        @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([invoiceId])
+}
+
+model MaintenanceRequest {
+  id            String                      @id @default(cuid())
+  roomId        String
+  tenantId      String?
+  status        MaintenanceRequestStatus    @default(OPEN)
+  chargeTo      MaintenanceRequestChargeTo?
+  title         String
+  description   String
+  estimatedCost Int?
+  actualCost    Int?
+  resolvedAt    DateTime?
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+
+  room     Room      @relation(fields: [roomId], references: [id])
+  tenant   Tenant?   @relation(fields: [tenantId], references: [id])
+  expenses Expense[]
+
+  @@index([roomId, status])
+  @@index([tenantId, status])
+}
+
+model Expense {
+  id                   String  @id @default(cuid())
+  boardingHouseId      String
+  maintenanceRequestId String?
+
+  category    ExpenseCategory
+  title       String
+  description String?
+  amount      Int
+  spentAt     DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  boardingHouse      BoardingHouse       @relation(fields: [boardingHouseId], references: [id])
+  maintenanceRequest MaintenanceRequest? @relation(fields: [maintenanceRequestId], references: [id])
+
+  @@index([boardingHouseId, spentAt])
+  @@index([category, spentAt])
+}

@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-canvas text-slate font-sans m-0;
+    min-width: 320px;
+  }
+
+  button, input, select {
+    @apply font-sans;
+    min-height: 44px;
+  }
+
+  button, select {
+    @apply cursor-pointer;
+  }
+}

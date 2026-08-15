@@ -1,0 +1,108 @@
+# ==========================================
+# Root Whitelist (Chỉ cho phép api/, web/, README.md, .gitignore)
+# ==========================================
+/*
+!/api/
+!/web/
+!/README.md
+!/README.*
+!/.gitignore
+
+# ==========================================
+# Dependencies
+# ==========================================
+node_modules/
+.pnpm-store/
+
+# ==========================================
+# Environment & Secret Credentials (Bảo mật tuyệt đối)
+# ==========================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+http-client.env.json
+http-client.private.env.json
+*.env.json
+*.local.json
+
+# ==========================================
+# AI Assistant & Internal Documentation
+# ==========================================
+.claude/
+.claudeignore
+.mcp.json
+docs/
+specs/
+AGENTS.md
+LEARNING_PATH.md
+PROJECT_CONTEXT.md
+
+# ==========================================
+# Build & Dist & Caches (NestJS / NextJS / React / Vite)
+# ==========================================
+dist/
+build/
+out/
+.next/
+.nuxt/
+.nest/
+.cache/
+.vite/
+.turbo/
+.eslintcache
+.stylelintcache
+*.tsbuildinfo
+*.js.map
+api/src/generated/
+api/tools/
+tools/
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+
+# ==========================================
+# Testing & Artifacts
+# ==========================================
+coverage/
+test-results/
+.nyc_output/
+playwright-report/
+
+# ==========================================
+# Logs
+# ==========================================
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ==========================================
+# IDE & OS Files
+# ==========================================
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+*~
+~$*
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ==========================================
+# Temporary directories & System files
+# ==========================================
+tmp/
+temp/
+*.tmp

@@ -1,0 +1,268 @@
+# ==============================================================================
+# 1. AUTHENTICATION
+# ==============================================================================
+
+@supaApiKey = {{$dotenv SUPABASE_ANON_KEY}}
+
+### Login
+# @name login
+POST https://rmzowtglqcbdhowljtrm.supabase.co/auth/v1/token?grant_type=password
+apikey: {{supaApiKey}}
+Content-Type: application/json
+
+{
+  "email": "test@gmail.com",
+  "password": "835114"
+}
+
+
+# ==============================================================================
+# 2. ROOMS MANAGEMENT
+# ==============================================================================
+
+### Create Room
+# @name createRoom
+POST http://localhost:3000/rooms
+Authorization: Bearer {{login.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "code": "103",
+  "rentAmount": 1230000,
+  "houseId": "cmrrhvaba0002ugb2gp84j0nk"
+}
+
+### Get All Rooms
+# @name getRooms
+GET http://localhost:3000/rooms
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+### Get Room By ID
+# @name getRoom
+GET http://localhost:3000/rooms/cmrx1rhh300039ob2ao9nq4wo
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+### Update Room
+# @name updateRoom
+PATCH http://localhost:3000/rooms/cmrrjuhpb000050b2ebq3p9ij
+Authorization: Bearer {{login.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "code": "111",
+  "rentAmount": 1230000
+}
+
+
+# ==============================================================================
+# 3. TENANTS MANAGEMENT
+# ==============================================================================
+
+### Create Tenant
+# @name createTenant
+POST http://localhost:3000/tenants
+Authorization: Bearer {{login.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "name": "Nguyen Van ABC",
+  "phone": "0901234567",
+  "identityNumber": "CCCD-TEST-00123"
+}
+
+### Get All Tenants
+# @name getTenants
+GET http://localhost:3000/tenants
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+
+# ==============================================================================
+# 4. CONTRACTS MANAGEMENT
+# ==============================================================================
+
+### Create Contract
+# @name createContract
+POST http://localhost:3000/contracts
+Authorization: Bearer {{login.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "roomId": "cmrx290vj0000osb2d23kbfor",
+  "tenantId": "cmrx29b1e0001osb2xxh7bo1o",
+  "startsAt": "2026-07-23T00:00:00.000Z",
+  "deposit": 3000000
+}
+
+### Get Active Contracts
+# @name getContractsByOwner
+GET http://localhost:3000/contracts?status=ACTIVE
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+### End Contract
+# @name endContract
+POST http://localhost:3000/contracts/{{createContract.response.body.id}}/end
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+
+# ==============================================================================
+# 5. METER READINGS
+# ==============================================================================
+
+### Create Meter Reading (Month 7)
+# @name createMeterReading7
+POST http://localhost:3000/meter-readings
+Authorization: Bearer {{login.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "roomId": "cmrx290vj0000osb2d23kbfor",
+  "month": 7,
+  "year": 2026,
+  "electricity": 123,
+  "water": 20
+}
+
+### Create Meter Reading (Month 8)
+# @name createMeterReading8
+POST http://localhost:3000/meter-readings
+Authorization: Bearer {{login.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "roomId": "cmrx290vj0000osb2d23kbfor",
+  "month": 8,
+  "year": 2026,
+  "electricity": 250,
+  "water": 50
+}
+
+### Get Meter Readings By Room ID
+# @name getMeterReadings
+GET http://localhost:3000/meter-readings?roomId=cmrx290vj0000osb2d23kbfor
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+
+# ==============================================================================
+# 6. INVOICES MANAGEMENT
+# ==============================================================================
+
+### Create Invoice (Draft)
+# @name createInvoice
+POST http://localhost:3000/invoices
+Authorization: Bearer {{login.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "contractId": "{{createContract.response.body.id}}",
+  "month": 7,
+  "year": 2026
+}
+
+### Get All Invoices
+# @name getInvoices
+GET http://localhost:3000/invoices
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+### Get Invoice By ID
+# @name getInvoice
+GET http://localhost:3000/invoices/{{createInvoice.response.body.id}}
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+### Issue Invoice (DRAFT -> ISSUED)
+# @name issueInvoice
+POST http://localhost:3000/invoices/{{createInvoice.response.body.id}}/issue
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+### Pay Invoice (ISSUED -> PAID)
+# @name payInvoice
+POST http://localhost:3000/invoices/{{createInvoice.response.body.id}}/pay
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+# ==============================================================================
+# 7. MAINTENANCE REQUESTS & INVOICE INTEGRATION
+# ==============================================================================
+
+### 1. Create Maintenance Request
+# @name createMaintenanceRequest
+POST http://localhost:3000/maintenance-requests
+Authorization: Bearer {{login.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "roomId": "cmrx290vj0000osb2d23kbfor",
+  "tenantId": "cmrx29b1e0001osb2xxh7bo1o",
+  "title": "Broken faucet",
+  "description": "The faucet is leaking."
+}
+
+### 2. Start Maintenance Request (OPEN -> IN_PROGRESS)
+# @name startMaintenanceRequest
+PATCH http://localhost:3000/maintenance-requests/{{createMaintenanceRequest.response.body.id}}/start
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+### 3. Resolve Maintenance Request & Charge Tenant (IN_PROGRESS -> RESOLVED)
+# @name resolveMaintenanceRequest
+PATCH http://localhost:3000/maintenance-requests/{{createMaintenanceRequest.response.body.id}}/resolve
+Authorization: Bearer {{login.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "chargeTo": "OWNER",
+  "estimatedCost": 200000,
+  "actualCost": 150000
+}
+
+### 3.5. Verify Expense Auto-Created
+# @name verifyMaintenanceExpense
+GET http://localhost:3000/expenses
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+### 4. Create Invoice With Maintenance Charge Included
+# @name createInvoiceWithMaintenance
+POST http://localhost:3000/invoices
+Authorization: Bearer {{login.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "contractId": "{{createContract.response.body.id}}",
+  "month": 7,
+  "year": 2026
+}
+
+# Expected Result in Invoice items:
+# {
+#   "type": "OTHER",
+#   "description": "Broken faucet",
+#   "quantity": 1,
+#   "unitPrice": 150000,
+#   "amount": 150000
+# }
+
+# ==============================================================================
+# 8. EXPENSES MANAGEMENT
+# ==============================================================================
+
+### Create Expense
+# @name createExpense
+POST http://localhost:3000/expenses
+Authorization: Bearer {{login.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "boardingHouseId": "cmrrhvaba0002ugb2gp84j0nk",
+  "category": "UTILITIES",
+  "title": "Electricity bill July",
+  "description": "Paid electricity bill for common areas",
+  "amount": 500000,
+  "spentAt": "2026-07-31T00:00:00.000Z"
+}
+
+### Get All Expenses
+# @name getExpenses
+GET http://localhost:3000/expenses
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+### Get Expense By ID
+# @name getExpense
+GET http://localhost:3000/expenses/{{createExpense.response.body.id}}
+Authorization: Bearer {{login.response.body.$.access_token}}
