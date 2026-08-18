@@ -106,6 +106,18 @@ describe('ExpensesPage', () => {
     expect(screen.getByText('Mua dụng cụ vệ sinh')).toBeInTheDocument();
   });
 
+  it('shows spentAt as dd/MM/yyyy HH:mm in local time', async () => {
+    mockFetchExpenses.mockResolvedValue(expenses);
+    mockFetchHouses.mockResolvedValue(houses);
+    renderPage();
+
+    // spentAt '2026-01-10T00:00:00.000Z' -> giờ VN (UTC+7) là 07:00 ngày 10/01.
+    // Intl.DateTimeFormat vi-VN (hour12:false) xuất "07:00 10/01/2026".
+    expect(
+      await screen.findByText('07:00 10/01/2026'),
+    ).toBeInTheDocument();
+  });
+
   it('filters expenses by title', async () => {
     mockFetchExpenses.mockResolvedValue(expenses);
     mockFetchHouses.mockResolvedValue(houses);

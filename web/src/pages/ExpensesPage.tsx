@@ -32,13 +32,30 @@ const CATEGORY_EMOJIS: Record<ExpenseCategory, string> = {
   OTHER: "📋",
 };
 
+// Ngày giờ địa phương cho input datetime-local (không dùng UTC -> lệch giờ với VN).
+const nowLocalInputValue = () => {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+// Định dạng "16/08/2026 14:30" cho cột Ngày chi.
+const formatDateTime = (iso: string) =>
+  new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
+
 const initialForm: CreateExpenseDto = {
   boardingHouseId: "",
   category: "MAINTENANCE",
   title: "",
   description: "",
   amount: 0,
-  spentAt: new Date().toISOString().slice(0, 16),
+  spentAt: nowLocalInputValue(),
 };
 
 export default function ExpensesPage() {
@@ -181,7 +198,7 @@ export default function ExpensesPage() {
                   )}
                   <div className="mt-3 flex items-end justify-between gap-2">
                     <div className="grid gap-0.5 text-[0.78rem] text-muted">
-                      <span>{new Date(expense.spentAt).toLocaleDateString("vi-VN")}</span>
+                      <span>{formatDateTime(expense.spentAt)}</span>
                       {expense.maintenanceRequest && (
                         <span className="text-[0.7rem]">🔗 {expense.maintenanceRequest.title}</span>
                       )}
@@ -234,7 +251,7 @@ export default function ExpensesPage() {
                         {new Intl.NumberFormat("vi-VN").format(expense.amount)} ₫
                       </td>
                       <td className="p-[15px_13px] text-[0.82rem] text-muted">
-                        {new Date(expense.spentAt).toLocaleDateString("vi-VN")}
+                        {formatDateTime(expense.spentAt)}
                       </td>
                     </tr>
                   ))}
