@@ -152,7 +152,7 @@ export class ContractsService {
       throw new NotFoundException('Contract not found.');
     }
 
-    return mapContractResponse(contract as unknown as ContractResponseSource);
+    return mapContractResponse(contract);
   }
 
   async getContracts(authUserId: string, status?: ContractStatus) {

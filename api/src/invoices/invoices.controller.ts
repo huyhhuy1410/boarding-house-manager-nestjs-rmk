@@ -80,7 +80,9 @@ export class InvoicesController {
   @ApiOperation({ summary: 'Void an invoice' })
   @ApiOkResponse({ type: InvoiceResponseDto })
   @ApiNotFoundResponse({ description: 'Invoice not found.' })
-  @ApiConflictResponse({ description: 'Only DRAFT or ISSUED invoices can be voided.' })
+  @ApiConflictResponse({
+    description: 'Only DRAFT or ISSUED invoices can be voided.',
+  })
   void(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.invoicesService.void(id, user.id);
   }

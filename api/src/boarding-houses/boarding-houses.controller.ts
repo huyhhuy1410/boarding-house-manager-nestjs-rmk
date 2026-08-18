@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { BoardingHousesService } from './boarding-houses.service';
 import { AuthGuard } from '../auth/auth.guard';
 import { CreateBoardingHouseDto } from './dto/create-boarding-house.dto';

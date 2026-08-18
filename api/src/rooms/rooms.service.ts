@@ -49,9 +49,7 @@ export class RoomsService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException(
-          'Room code already exists in this house.',
-        );
+        throw new ConflictException('Room code already exists in this house.');
       }
 
       throw error;
@@ -113,7 +111,7 @@ export class RoomsService {
     return mapRoomResponse({
       ...room,
       contract: room.contracts?.[0],
-    } as unknown as any);
+    });
   }
 
   async update(id: string, dto: UpdateRoomDto, authUserId: string) {
@@ -153,9 +151,7 @@ export class RoomsService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        throw new ConflictException(
-          'Room code already exists in this house.',
-        );
+        throw new ConflictException('Room code already exists in this house.');
       }
 
       throw error;
@@ -183,9 +179,7 @@ export class RoomsService {
     }
 
     if (room.contracts.length > 0) {
-      throw new ConflictException(
-        'Cannot delete room with active contracts.',
-      );
+      throw new ConflictException('Cannot delete room with active contracts.');
     }
 
     const deleted = await this.prisma.room.delete({ where: { id } });

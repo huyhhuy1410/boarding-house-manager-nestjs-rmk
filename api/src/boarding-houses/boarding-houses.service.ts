@@ -67,8 +67,12 @@ export class BoardingHousesService {
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
         ...(dto.address !== undefined && { address: dto.address }),
-        ...(dto.electricityUnitPrice !== undefined && { electricityUnitPrice: dto.electricityUnitPrice }),
-        ...(dto.waterUnitPrice !== undefined && { waterUnitPrice: dto.waterUnitPrice }),
+        ...(dto.electricityUnitPrice !== undefined && {
+          electricityUnitPrice: dto.electricityUnitPrice,
+        }),
+        ...(dto.waterUnitPrice !== undefined && {
+          waterUnitPrice: dto.waterUnitPrice,
+        }),
       },
     });
 
