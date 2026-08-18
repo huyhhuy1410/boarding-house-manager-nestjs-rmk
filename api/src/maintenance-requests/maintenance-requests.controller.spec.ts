@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthGuard } from '../auth/auth.guard';
 import type { AuthenticatedUser } from '../auth/types/authenticated-user.type';
@@ -82,41 +82,61 @@ describe('MaintenanceRequestsController', () => {
   it('findOne delegates request id and user id to the service', async () => {
     service.findOne.mockResolvedValue(request);
 
-    await expect(controller.findOne('request-1', user)).resolves.toEqual(request);
+    await expect(controller.findOne('request-1', user)).resolves.toEqual(
+      request,
+    );
     expect(service.findOne).toHaveBeenCalledWith('request-1', user.id);
   });
 
   it('remove delegates request id and user id to the service', async () => {
     service.remove.mockResolvedValue(request);
 
-    await expect(controller.remove('request-1', user)).resolves.toEqual(request);
+    await expect(controller.remove('request-1', user)).resolves.toEqual(
+      request,
+    );
     expect(service.remove).toHaveBeenCalledWith('request-1', user.id);
   });
 
   it('start delegates request id and user id to the service', async () => {
     service.start.mockResolvedValue({ ...request, status: 'IN_PROGRESS' });
 
-    await expect(controller.start('request-1', user)).resolves.toMatchObject({ status: 'IN_PROGRESS' });
+    await expect(controller.start('request-1', user)).resolves.toMatchObject({
+      status: 'IN_PROGRESS',
+    });
     expect(service.start).toHaveBeenCalledWith('request-1', user.id);
   });
 
   it('resolve delegates request id, dto and user id to the service', async () => {
     service.resolve.mockResolvedValue({ ...request, status: 'RESOLVED' });
 
-    await expect(controller.resolve('request-1', resolveDto, user)).resolves.toMatchObject({ status: 'RESOLVED' });
-    expect(service.resolve).toHaveBeenCalledWith('request-1', resolveDto, user.id);
+    await expect(
+      controller.resolve('request-1', resolveDto, user),
+    ).resolves.toMatchObject({ status: 'RESOLVED' });
+    expect(service.resolve).toHaveBeenCalledWith(
+      'request-1',
+      resolveDto,
+      user.id,
+    );
   });
 
   it('cancel delegates request id and user id to the service', async () => {
     service.cancel.mockResolvedValue({ ...request, status: 'CANCELLED' });
 
-    await expect(controller.cancel('request-1', user)).resolves.toMatchObject({ status: 'CANCELLED' });
+    await expect(controller.cancel('request-1', user)).resolves.toMatchObject({
+      status: 'CANCELLED',
+    });
     expect(service.cancel).toHaveBeenCalledWith('request-1', user.id);
   });
 
   it('propagates service exceptions', async () => {
-    service.resolve.mockRejectedValue(new BadRequestException('A tenant is required when charging the repair to a tenant.'));
+    service.resolve.mockRejectedValue(
+      new ConflictException(
+        'Only IN_PROGRESS requests can be resolved (current status: RESOLVED).',
+      ),
+    );
 
-    await expect(controller.resolve('request-1', resolveDto, user)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      controller.resolve('request-1', resolveDto, user),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });

@@ -1,6 +1,9 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { MaintenanceRequestChargeTo, MaintenanceRequestStatus } from '../generated/prisma/enums';
+import {
+  MaintenanceRequestChargeTo,
+  MaintenanceRequestStatus,
+} from '../generated/prisma/enums';
 import { AuthService } from '../auth/auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MaintenanceRequestsService } from './maintenance-requests.service';
@@ -34,25 +37,31 @@ describe('MaintenanceRequestsService', () => {
     maintenanceRequest: {
       findMany: jest.Mock;
       findFirst: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
       create: jest.Mock;
-      update: jest.Mock;
-      delete: jest.Mock;
+      updateMany: jest.Mock;
+      deleteMany: jest.Mock;
     };
     expense: { create: jest.Mock };
   };
 
   beforeEach(async () => {
-    authService = { requireApplicationUser: jest.fn().mockResolvedValue(owner) };
+    authService = {
+      requireApplicationUser: jest.fn().mockResolvedValue(owner),
+    };
     prisma = {
-      $transaction: jest.fn(async (callback: (tx: typeof prisma) => unknown) => callback(prisma)),
+      $transaction: jest.fn(async (callback: (tx: typeof prisma) => unknown) =>
+        callback(prisma),
+      ),
       room: { findFirst: jest.fn() },
       tenant: { findFirst: jest.fn() },
       maintenanceRequest: {
         findMany: jest.fn(),
         findFirst: jest.fn(),
+        findUniqueOrThrow: jest.fn(),
         create: jest.fn(),
-        update: jest.fn(),
-        delete: jest.fn(),
+        updateMany: jest.fn(),
+        deleteMany: jest.fn(),
       },
       expense: { create: jest.fn() },
     };
@@ -87,7 +96,9 @@ describe('MaintenanceRequestsService', () => {
         tenantId: 'tenant-1',
         status: MaintenanceRequestStatus.OPEN,
       });
-      expect(authService.requireApplicationUser).toHaveBeenCalledWith(authUserId);
+      expect(authService.requireApplicationUser).toHaveBeenCalledWith(
+        authUserId,
+      );
       expect(prisma.tenant.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
@@ -131,36 +142,105 @@ describe('MaintenanceRequestsService', () => {
     });
   });
 
-  describe('start', () => {
-    it('moves an owned OPEN request to IN_PROGRESS', async () => {
-      prisma.maintenanceRequest.findFirst.mockResolvedValue({ id: 'request-1' });
-      prisma.maintenanceRequest.update.mockResolvedValue(
-        requestRecord({ status: MaintenanceRequestStatus.IN_PROGRESS }),
-      );
+  describe('findAll', () => {
+    it('returns owner-scoped requests newest first', async () => {
+      prisma.maintenanceRequest.findMany.mockResolvedValue([
+        requestRecord({ id: 'request-2' }),
+        requestRecord({ id: 'request-1' }),
+      ]);
 
-      await expect(service.start('request-1', authUserId)).resolves.toMatchObject({
-        status: MaintenanceRequestStatus.IN_PROGRESS,
-      });
-      expect(prisma.maintenanceRequest.findFirst).toHaveBeenCalledWith(
+      await expect(service.findAll(authUserId)).resolves.toMatchObject([
+        { id: 'request-2' },
+        { id: 'request-1' },
+      ]);
+      expect(prisma.maintenanceRequest.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({
-            id: 'request-1',
-            status: MaintenanceRequestStatus.OPEN,
-          }),
+          where: { room: { house: { ownerId: owner.id } } },
+          orderBy: { createdAt: 'desc' },
         }),
       );
     });
 
-    it.each([MaintenanceRequestStatus.IN_PROGRESS, MaintenanceRequestStatus.RESOLVED, MaintenanceRequestStatus.CANCELLED])(
-      'rejects a request already in %s', async (status) => {
-        prisma.maintenanceRequest.findFirst.mockResolvedValue(null);
+    it('returns an empty list when the owner has no requests', async () => {
+      prisma.maintenanceRequest.findMany.mockResolvedValue([]);
 
-        await expect(service.start('request-1', authUserId)).rejects.toBeInstanceOf(
-          NotFoundException,
-        );
-        expect(status).toBeDefined();
-      },
-    );
+      await expect(service.findAll(authUserId)).resolves.toEqual([]);
+    });
+  });
+
+  describe('findOne', () => {
+    it('returns a request inside the owner scope', async () => {
+      prisma.maintenanceRequest.findFirst.mockResolvedValue(requestRecord());
+
+      await expect(
+        service.findOne('request-1', authUserId),
+      ).resolves.toMatchObject({ id: 'request-1', roomId: 'room-1' });
+      expect(prisma.maintenanceRequest.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: 'request-1',
+            room: { house: { ownerId: owner.id } },
+          },
+        }),
+      );
+    });
+
+    it('rejects a request outside the owner scope', async () => {
+      prisma.maintenanceRequest.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.findOne('request-other', authUserId),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('start', () => {
+    it('moves an owned OPEN request to IN_PROGRESS', async () => {
+      prisma.maintenanceRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.maintenanceRequest.findUniqueOrThrow.mockResolvedValue(
+        requestRecord({ status: MaintenanceRequestStatus.IN_PROGRESS }),
+      );
+
+      await expect(
+        service.start('request-1', authUserId),
+      ).resolves.toMatchObject({
+        status: MaintenanceRequestStatus.IN_PROGRESS,
+      });
+      // Guard nằm trong where của updateMany -> atomic, không phải read-then-write.
+      expect(prisma.maintenanceRequest.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'request-1',
+          status: MaintenanceRequestStatus.OPEN,
+          room: { house: { ownerId: owner.id } },
+        },
+        data: { status: MaintenanceRequestStatus.IN_PROGRESS },
+      });
+    });
+
+    it.each([
+      MaintenanceRequestStatus.IN_PROGRESS,
+      MaintenanceRequestStatus.RESOLVED,
+      MaintenanceRequestStatus.CANCELLED,
+    ])('rejects a request already in %s with a conflict', async (status) => {
+      prisma.maintenanceRequest.updateMany.mockResolvedValue({ count: 0 });
+      prisma.maintenanceRequest.findFirst.mockResolvedValue({ status });
+
+      await expect(
+        service.start('request-1', authUserId),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(
+        prisma.maintenanceRequest.findUniqueOrThrow,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('rejects a request outside the owner scope with a 404', async () => {
+      prisma.maintenanceRequest.updateMany.mockResolvedValue({ count: 0 });
+      prisma.maintenanceRequest.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.start('request-1', authUserId),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
   });
 
   describe('resolve', () => {
@@ -170,25 +250,28 @@ describe('MaintenanceRequestsService', () => {
       actualCost: 150000,
     };
 
-    it('resolves an IN_PROGRESS request and creates an owner expense', async () => {
-      prisma.maintenanceRequest.findFirst.mockResolvedValue({
-        id: 'request-1',
-        tenantId: 'tenant-1',
-        title: 'Leaking faucet',
+    const resolvedRecord = (overrides: Record<string, unknown> = {}) =>
+      requestRecord({
+        status: MaintenanceRequestStatus.RESOLVED,
+        resolvedAt: new Date('2026-02-01T00:00:00.000Z'),
         room: { houseId: 'house-1' },
+        ...overrides,
       });
-      prisma.maintenanceRequest.update.mockResolvedValue(
-        requestRecord({
-          status: MaintenanceRequestStatus.RESOLVED,
+
+    it('resolves an IN_PROGRESS request and creates an owner expense', async () => {
+      prisma.maintenanceRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.maintenanceRequest.findUniqueOrThrow.mockResolvedValue(
+        resolvedRecord({
           chargeTo: MaintenanceRequestChargeTo.OWNER,
           estimatedCost: 200000,
           actualCost: 150000,
-          resolvedAt: new Date(),
         }),
       );
       prisma.expense.create.mockResolvedValue({});
 
-      await expect(service.resolve('request-1', resolveDto, authUserId)).resolves.toMatchObject({
+      await expect(
+        service.resolve('request-1', resolveDto, authUserId),
+      ).resolves.toMatchObject({
         status: MaintenanceRequestStatus.RESOLVED,
         actualCost: 150000,
       });
@@ -198,26 +281,72 @@ describe('MaintenanceRequestsService', () => {
             boardingHouseId: 'house-1',
             maintenanceRequestId: 'request-1',
             amount: 150000,
+            title: 'Sửa chữa: Leaking faucet',
+            description: 'Chi phí sửa chữa do chủ nhà chi trả',
           }),
         }),
       );
     });
 
-    it('rejects resolving a request that is not IN_PROGRESS', async () => {
+    it('gates the transition on IN_PROGRESS inside the updateMany where clause', async () => {
+      prisma.maintenanceRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.maintenanceRequest.findUniqueOrThrow.mockResolvedValue(
+        resolvedRecord(),
+      );
+
+      await service.resolve('request-1', resolveDto, authUserId);
+
+      expect(prisma.maintenanceRequest.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            id: 'request-1',
+            status: MaintenanceRequestStatus.IN_PROGRESS,
+            room: { house: { ownerId: owner.id } },
+          },
+        }),
+      );
+      // Toàn bộ resolve nằm trong đúng một transaction.
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    // A2: request thứ hai trong cuộc đua thấy count === 0 -> không tạo Expense trùng.
+    it('rejects a concurrent second resolve and creates no duplicate expense', async () => {
+      prisma.maintenanceRequest.updateMany.mockResolvedValue({ count: 0 });
+      prisma.maintenanceRequest.findFirst.mockResolvedValue({
+        status: MaintenanceRequestStatus.RESOLVED,
+      });
+
+      await expect(
+        service.resolve('request-1', resolveDto, authUserId),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.expense.create).not.toHaveBeenCalled();
+      expect(
+        prisma.maintenanceRequest.findUniqueOrThrow,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('rejects resolving a request outside the owner scope with a 404', async () => {
+      prisma.maintenanceRequest.updateMany.mockResolvedValue({ count: 0 });
       prisma.maintenanceRequest.findFirst.mockResolvedValue(null);
 
       await expect(
         service.resolve('request-1', resolveDto, authUserId),
       ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.expense.create).not.toHaveBeenCalled();
     });
 
-    it('requires a tenant when charging the repair to a tenant', async () => {
-      prisma.maintenanceRequest.findFirst.mockResolvedValue({
-        id: 'request-1',
-        tenantId: null,
-        title: 'Leaking faucet',
-        room: { houseId: 'house-1' },
-      });
+    // A3: phí do khách thuê chịu được trả trực tiếp ngoài hệ thống,
+    // không có Expense nào được sinh ra. Nhưng muốn chọn TENANT thì
+    // yêu cầu PHẢI có tenant — "khách thuê chịu phí" mà không có khách là vô nghĩa.
+    it('resolves with chargeTo TENANT when the request has a tenant', async () => {
+      prisma.maintenanceRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.maintenanceRequest.findUniqueOrThrow.mockResolvedValue(
+        resolvedRecord({
+          tenantId: 'tenant-1',
+          chargeTo: MaintenanceRequestChargeTo.TENANT,
+          actualCost: 150000,
+        }),
+      );
 
       await expect(
         service.resolve(
@@ -225,73 +354,147 @@ describe('MaintenanceRequestsService', () => {
           { ...resolveDto, chargeTo: MaintenanceRequestChargeTo.TENANT },
           authUserId,
         ),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(prisma.$transaction).not.toHaveBeenCalled();
+      ).resolves.toMatchObject({
+        status: MaintenanceRequestStatus.RESOLVED,
+        chargeTo: MaintenanceRequestChargeTo.TENANT,
+        tenantId: 'tenant-1',
+      });
+      expect(prisma.expense.create).not.toHaveBeenCalled();
+    });
+
+    // A2 (mở rộng): chọn TENANT trên request không có tenant -> Conflict.
+    it('rejects chargeTo TENANT when the request has no tenant', async () => {
+      prisma.maintenanceRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.maintenanceRequest.findUniqueOrThrow.mockResolvedValue(
+        resolvedRecord({
+          tenantId: null,
+          chargeTo: MaintenanceRequestChargeTo.TENANT,
+          actualCost: 150000,
+        }),
+      );
+
+      await expect(
+        service.resolve(
+          'request-1',
+          { ...resolveDto, chargeTo: MaintenanceRequestChargeTo.TENANT },
+          authUserId,
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.expense.create).not.toHaveBeenCalled();
     });
 
     it.each([
       { chargeTo: MaintenanceRequestChargeTo.TENANT, actualCost: 150000 },
       { chargeTo: MaintenanceRequestChargeTo.OWNER, actualCost: 0 },
       { chargeTo: MaintenanceRequestChargeTo.OWNER, actualCost: undefined },
-    ])('does not create an expense for $chargeTo with actualCost=$actualCost', async (dto) => {
-      prisma.maintenanceRequest.findFirst.mockResolvedValue({
-        id: 'request-1',
-        tenantId: 'tenant-1',
-        title: 'Leaking faucet',
-        room: { houseId: 'house-1' },
-      });
-      prisma.maintenanceRequest.update.mockResolvedValue(
-        requestRecord({ status: MaintenanceRequestStatus.RESOLVED }),
-      );
-      prisma.expense.create.mockReset();
+    ])(
+      'does not create an expense for $chargeTo with actualCost=$actualCost',
+      async (dto) => {
+        prisma.maintenanceRequest.updateMany.mockResolvedValue({ count: 1 });
+        prisma.maintenanceRequest.findUniqueOrThrow.mockResolvedValue(
+          resolvedRecord(),
+        );
+        prisma.expense.create.mockReset();
 
-      await service.resolve('request-1', dto, authUserId);
-      expect(prisma.expense.create).not.toHaveBeenCalled();
+        await service.resolve('request-1', dto, authUserId);
+        expect(prisma.expense.create).not.toHaveBeenCalled();
+      },
+    );
+  });
+
+  describe('cancel', () => {
+    it('cancels an owned OPEN or IN_PROGRESS request', async () => {
+      prisma.maintenanceRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.maintenanceRequest.findUniqueOrThrow.mockResolvedValue(
+        requestRecord({ status: MaintenanceRequestStatus.CANCELLED }),
+      );
+
+      await expect(
+        service.cancel('request-1', authUserId),
+      ).resolves.toMatchObject({
+        status: MaintenanceRequestStatus.CANCELLED,
+      });
+      // Cả hai status "còn sống" đều nằm trong guard, nên chỉ cần 1 test cho where.
+      expect(prisma.maintenanceRequest.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'request-1',
+          status: {
+            in: [
+              MaintenanceRequestStatus.OPEN,
+              MaintenanceRequestStatus.IN_PROGRESS,
+            ],
+          },
+          room: { house: { ownerId: owner.id } },
+        },
+        data: { status: MaintenanceRequestStatus.CANCELLED },
+      });
+    });
+
+    it('rejects cancelling a terminal request with a conflict', async () => {
+      prisma.maintenanceRequest.updateMany.mockResolvedValue({ count: 0 });
+      prisma.maintenanceRequest.findFirst.mockResolvedValue({
+        status: MaintenanceRequestStatus.RESOLVED,
+      });
+
+      await expect(
+        service.cancel('request-1', authUserId),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rejects cancelling a request outside the owner scope with a 404', async () => {
+      prisma.maintenanceRequest.updateMany.mockResolvedValue({ count: 0 });
+      prisma.maintenanceRequest.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.cancel('request-1', authUserId),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
-  describe('cancel and remove', () => {
-    it.each([MaintenanceRequestStatus.OPEN, MaintenanceRequestStatus.IN_PROGRESS])(
-      'cancels an owned %s request', async (status) => {
-        prisma.maintenanceRequest.findFirst.mockResolvedValue({ id: 'request-1' });
-        prisma.maintenanceRequest.update.mockResolvedValue(
-          requestRecord({ status: MaintenanceRequestStatus.CANCELLED }),
-        );
+  describe('remove', () => {
+    it('deletes an OPEN request without actual cost', async () => {
+      prisma.maintenanceRequest.findFirst.mockResolvedValue(requestRecord());
+      prisma.maintenanceRequest.deleteMany.mockResolvedValue({ count: 1 });
 
-        await expect(service.cancel('request-1', authUserId)).resolves.toMatchObject({
-          status: MaintenanceRequestStatus.CANCELLED,
-        });
-        expect(status).toBeDefined();
-      },
-    );
-
-    it('rejects cancelling a terminal request', async () => {
-      prisma.maintenanceRequest.findFirst.mockResolvedValue(null);
-
-      await expect(service.cancel('request-1', authUserId)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.remove('request-1', authUserId),
+      ).resolves.toMatchObject({ id: 'request-1' });
+      expect(prisma.maintenanceRequest.deleteMany).toHaveBeenCalledWith({
+        where: {
+          id: 'request-1',
+          status: {
+            in: [
+              MaintenanceRequestStatus.OPEN,
+              MaintenanceRequestStatus.IN_PROGRESS,
+            ],
+          },
+          actualCost: null,
+          room: { house: { ownerId: owner.id } },
+        },
+      });
     });
 
-    it('deletes an OPEN request without actual cost', async () => {
-      prisma.maintenanceRequest.findFirst.mockResolvedValue({ id: 'request-1' });
-      prisma.maintenanceRequest.delete.mockResolvedValue(requestRecord());
+    it('rejects deleting a request that is not owned', async () => {
+      prisma.maintenanceRequest.findFirst.mockResolvedValue(null);
 
-      await expect(service.remove('request-1', authUserId)).resolves.toMatchObject({
-        id: 'request-1',
-      });
-      expect(prisma.maintenanceRequest.delete).toHaveBeenCalledWith({
-        where: { id: 'request-1' },
-      });
+      await expect(
+        service.remove('request-1', authUserId),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.maintenanceRequest.deleteMany).not.toHaveBeenCalled();
     });
 
     it('rejects deleting a request with actual cost or terminal status', async () => {
-      prisma.maintenanceRequest.findFirst.mockResolvedValue(null);
-
-      await expect(service.remove('request-1', authUserId)).rejects.toBeInstanceOf(
-        NotFoundException,
+      prisma.maintenanceRequest.findFirst.mockResolvedValue(
+        requestRecord({
+          status: MaintenanceRequestStatus.RESOLVED,
+          actualCost: 150000,
+        }),
       );
-      expect(prisma.maintenanceRequest.delete).not.toHaveBeenCalled();
+      prisma.maintenanceRequest.deleteMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.remove('request-1', authUserId),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
   });
 });

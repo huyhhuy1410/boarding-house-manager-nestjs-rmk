@@ -16,7 +16,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { ResolveMaintenanceRequestDto } from './dto/resolve-maintenance-request.dto';
 import {
   ApiBearerAuth,
-  ApiBadRequestResponse,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -72,8 +72,10 @@ export class MaintenanceRequestsController {
   @Delete(':id')
   @ApiOperation({ summary: 'Delete an open maintenance request' })
   @ApiOkResponse({ type: MaintenanceRequestResponseDto })
-  @ApiNotFoundResponse({
-    description: 'Maintenance request cannot be deleted.',
+  @ApiNotFoundResponse({ description: 'Maintenance request not found.' })
+  @ApiConflictResponse({
+    description:
+      'Maintenance request cannot be deleted once it is resolved, cancelled, or has an actual cost.',
   })
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.maintenanceRequestsService.remove(id, user.id);
@@ -82,19 +84,26 @@ export class MaintenanceRequestsController {
   @Patch(':id/start')
   @ApiOperation({ summary: 'Start a maintenance request' })
   @ApiOkResponse({ type: MaintenanceRequestResponseDto })
-  @ApiNotFoundResponse({ description: 'Open maintenance request not found.' })
+  @ApiNotFoundResponse({ description: 'Maintenance request not found.' })
+  @ApiConflictResponse({ description: 'Only OPEN requests can be started.' })
   start(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.maintenanceRequestsService.start(id, user.id);
   }
 
   @Patch(':id/resolve')
-  @ApiOperation({ summary: 'Resolve a maintenance request' })
-  @ApiOkResponse({ type: MaintenanceRequestResponseDto })
-  @ApiBadRequestResponse({
-    description: 'A tenant is required when charging the repair to a tenant.',
+  @ApiOperation({
+    summary: 'Resolve a maintenance request',
+    description:
+      'chargeTo OWNER creates a MAINTENANCE expense when actualCost > 0. ' +
+      'chargeTo TENANT is settled directly between tenant and landlord: ' +
+      'no expense is created and nothing is added to the monthly invoice. ' +
+      'chargeTo TENANT requires the request to have a tenant.',
   })
-  @ApiNotFoundResponse({
-    description: 'In-progress maintenance request not found.',
+  @ApiOkResponse({ type: MaintenanceRequestResponseDto })
+  @ApiNotFoundResponse({ description: 'Maintenance request not found.' })
+  @ApiConflictResponse({
+    description:
+      'Only IN_PROGRESS requests can be resolved, or chargeTo TENANT is set on a request without a tenant.',
   })
   resolve(
     @Param('id') id: string,
@@ -108,6 +117,9 @@ export class MaintenanceRequestsController {
   @ApiOperation({ summary: 'Cancel a maintenance request' })
   @ApiOkResponse({ type: MaintenanceRequestResponseDto })
   @ApiNotFoundResponse({ description: 'Maintenance request not found.' })
+  @ApiConflictResponse({
+    description: 'Only OPEN or IN_PROGRESS requests can be cancelled.',
+  })
   cancel(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.maintenanceRequestsService.cancel(id, user.id);
   }
