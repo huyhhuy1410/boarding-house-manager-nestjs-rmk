@@ -15,8 +15,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   ContractStatus,
   InvoiceStatus,
-  MaintenanceRequestStatus,
-  MaintenanceRequestChargeTo,
   Prisma,
   InvoiceItemType,
 } from '../generated/prisma/client';
@@ -51,7 +49,6 @@ export class InvoicesService {
             id: true,
             status: true,
             roomId: true,
-            tenantId: true,
             room: {
               select: {
                 rentAmount: true,
@@ -69,8 +66,6 @@ export class InvoicesService {
           throw new NotFoundException('Active contract not found.');
         }
 
-        const periodStart = new Date(Date.UTC(dto.year, dto.month - 1, 1));
-        const periodEnd = new Date(Date.UTC(dto.year, dto.month, 1));
         // meter reading queries
         const currentReading = await tx.meterReading.findUnique({
           where: {
@@ -105,38 +100,6 @@ export class InvoicesService {
             water: true,
           },
         });
-        const maintenanceCharges = await tx.maintenanceRequest.findMany({
-          where: {
-            roomId: contract.roomId,
-            tenantId: contract.tenantId,
-            status: MaintenanceRequestStatus.RESOLVED,
-            chargeTo: MaintenanceRequestChargeTo.TENANT,
-            actualCost: {
-              not: null,
-              gt: 0,
-            },
-            resolvedAt: {
-              gte: periodStart,
-              lt: periodEnd,
-            },
-          },
-          select: {
-            title: true,
-            actualCost: true,
-          },
-        });
-        const maintenanceItems = maintenanceCharges.map((charge) => ({
-          type: InvoiceItemType.OTHER,
-          description: charge.title,
-          quantity: 1,
-          unitPrice: charge.actualCost!,
-          amount: charge.actualCost!,
-        }));
-
-        const maintenanceTotal = maintenanceItems.reduce(
-          (sum, item) => sum + item.amount,
-          0,
-        );
         const previousElectricity = previousReading?.electricity ?? 0;
         const previousWater = previousReading?.water ?? 0;
 
@@ -158,8 +121,7 @@ export class InvoicesService {
         const electricityTotal = electricityUsage * electricityUnitPrice;
         const waterTotal = waterUsage * waterUnitPrice;
 
-        const total =
-          rentTotal + electricityTotal + waterTotal + maintenanceTotal;
+        const total = rentTotal + electricityTotal + waterTotal;
         const invoice = await tx.invoice.create({
           data: {
             contractId: contract.id,
@@ -172,30 +134,33 @@ export class InvoicesService {
             waterUsage,
             waterUnitPrice,
             total,
+            // Hóa đơn tháng CHỈ gồm tiền phòng + điện + nước.
+            // Chi phí sửa chữa không bao giờ nằm ở đây:
+            // - chargeTo OWNER  -> sinh Expense (chi phí vận hành nhà trọ)
+            // - chargeTo TENANT -> khách thuê trả trực tiếp ngoài hệ thống
             items: {
               create: [
                 {
                   type: InvoiceItemType.RENT,
-                  description: 'Monthly rent',
+                  description: 'Tiền phòng',
                   quantity: 1,
                   unitPrice: rentAmount,
                   amount: rentTotal,
                 },
                 {
                   type: InvoiceItemType.ELECTRICITY,
-                  description: 'Electricity usage',
+                  description: 'Tiền điện',
                   quantity: electricityUsage,
                   unitPrice: electricityUnitPrice,
                   amount: electricityTotal,
                 },
                 {
                   type: InvoiceItemType.WATER,
-                  description: 'Water usage',
+                  description: 'Tiền nước',
                   quantity: waterUsage,
                   unitPrice: waterUnitPrice,
                   amount: waterTotal,
                 },
-                ...maintenanceItems,
               ],
             },
           },
@@ -281,7 +246,7 @@ export class InvoicesService {
     if (!invoice) {
       throw new NotFoundException('Invoice not found.');
     }
-    return mapInvoiceResponse(invoice as unknown as InvoiceResponseSource);
+    return mapInvoiceResponse(invoice);
   }
 
   async issue(id: string, authUserId: string) {
@@ -366,9 +331,7 @@ export class InvoicesService {
     });
 
     if (!invoice) {
-      throw new NotFoundException(
-        'Invoice not found or cannot be voided.',
-      );
+      throw new NotFoundException('Invoice not found or cannot be voided.');
     }
 
     const updatedInvoice = await this.prisma.invoice.update({

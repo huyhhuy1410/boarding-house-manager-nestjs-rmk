@@ -179,10 +179,16 @@ POST http://localhost:3000/invoices/{{createInvoice.response.body.id}}/pay
 Authorization: Bearer {{login.response.body.$.access_token}}
 
 # ==============================================================================
-# 7. MAINTENANCE REQUESTS & INVOICE INTEGRATION
+# 7. MAINTENANCE REQUESTS
 # ==============================================================================
+# Business rule:
+#   chargeTo OWNER  -> auto-creates an Expense (MAINTENANCE) when actualCost > 0
+#   chargeTo TENANT -> tenant pays the technician/landlord directly, outside the
+#                      system. No Expense, and NOTHING is added to the invoice.
+#   The maintenance request itself is the audit log for the room.
+#   tenantId is optional at creation and at resolution.
 
-### 1. Create Maintenance Request
+### 1. Create Maintenance Request (tenantId optional — omit it for a vacant room)
 # @name createMaintenanceRequest
 POST http://localhost:3000/maintenance-requests
 Authorization: Bearer {{login.response.body.$.access_token}}
@@ -196,11 +202,14 @@ Content-Type: application/json
 }
 
 ### 2. Start Maintenance Request (OPEN -> IN_PROGRESS)
+# Repeat this call to see the 409 guard: only OPEN requests can be started.
 # @name startMaintenanceRequest
 PATCH http://localhost:3000/maintenance-requests/{{createMaintenanceRequest.response.body.id}}/start
 Authorization: Bearer {{login.response.body.$.access_token}}
 
-### 3. Resolve Maintenance Request & Charge Tenant (IN_PROGRESS -> RESOLVED)
+### 3. Resolve & Charge The Owner (IN_PROGRESS -> RESOLVED, creates an Expense)
+# Repeat this call to see the 409 guard: only IN_PROGRESS requests can be
+# resolved. That guard is what prevents a duplicate Expense on a double click.
 # @name resolveMaintenanceRequest
 PATCH http://localhost:3000/maintenance-requests/{{createMaintenanceRequest.response.body.id}}/resolve
 Authorization: Bearer {{login.response.body.$.access_token}}
@@ -212,13 +221,25 @@ Content-Type: application/json
   "actualCost": 150000
 }
 
-### 3.5. Verify Expense Auto-Created
+### 3.5. Verify Expense Auto-Created (only for chargeTo OWNER)
 # @name verifyMaintenanceExpense
 GET http://localhost:3000/expenses
 Authorization: Bearer {{login.response.body.$.access_token}}
 
-### 4. Create Invoice With Maintenance Charge Included
-# @name createInvoiceWithMaintenance
+### 3.6. Resolve & Charge The Tenant (no Expense, no invoice item)
+# Works even when the request has no tenantId — tenant settles directly.
+# Create + start another request first, then paste its id here.
+PATCH http://localhost:3000/maintenance-requests/PASTE_ANOTHER_REQUEST_ID/resolve
+Authorization: Bearer {{login.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "chargeTo": "TENANT",
+  "actualCost": 150000
+}
+
+### 4. Create Invoice — rent + electricity + water ONLY
+# @name createInvoiceAfterMaintenance
 POST http://localhost:3000/invoices
 Authorization: Bearer {{login.response.body.$.access_token}}
 Content-Type: application/json
@@ -229,14 +250,8 @@ Content-Type: application/json
   "year": 2026
 }
 
-# Expected Result in Invoice items:
-# {
-#   "type": "OTHER",
-#   "description": "Broken faucet",
-#   "quantity": 1,
-#   "unitPrice": 150000,
-#   "amount": 150000
-# }
+# Expected Result: exactly 3 items — RENT, ELECTRICITY, WATER.
+# There must be NO "OTHER" item for maintenance, whoever paid for it.
 
 # ==============================================================================
 # 8. EXPENSES MANAGEMENT
@@ -266,3 +281,22 @@ Authorization: Bearer {{login.response.body.$.access_token}}
 # @name getExpense
 GET http://localhost:3000/expenses/{{createExpense.response.body.id}}
 Authorization: Bearer {{login.response.body.$.access_token}}
+
+# ==============================================================================
+# 9. DASHBOARD
+# ==============================================================================
+
+### Get Dashboard Stats
+# @name getDashboard
+GET http://localhost:3000/dashboard
+Authorization: Bearer {{login.response.body.$.access_token}}
+
+# Expected Result: one JSON object, aggregated server-side.
+#   totalRooms / occupiedRooms / vacantRooms / occupancyRate  <- room.groupBy
+#   totalRevenue (PAID only) / paidInvoices / pendingInvoices <- invoice.groupBy
+#   activeContracts                                          <- contract.count
+#   dueInvoices        - max 5 ISSUED invoices, nearest dueAt first
+#   expiringContracts  - max 5 ACTIVE contracts with endsAt in the future
+#
+# Cross-check: occupiedRooms must match the OCCUPIED rows in "Get All Rooms",
+# and totalRevenue must match the sum of PAID totals in "Get All Invoices".
