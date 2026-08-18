@@ -11,6 +11,7 @@ import { MeterReadingsModule } from './meter-readings/meter-readings.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { MaintenanceRequestsModule } from './maintenance-requests/maintenance-requests.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { ExpensesModule } from './expenses/expenses.module';
     InvoicesModule,
     MaintenanceRequestsModule,
     ExpensesModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}
