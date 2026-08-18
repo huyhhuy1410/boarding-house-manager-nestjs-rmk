@@ -78,7 +78,9 @@ describe('TenantsController', () => {
   it('update delegates id, dto and user id to the service', async () => {
     service.update.mockResolvedValue({ ...tenant, phone: '0912345678' });
 
-    await expect(controller.update('tenant-1', updateDto, user)).resolves.toMatchObject({ phone: '0912345678' });
+    await expect(
+      controller.update('tenant-1', updateDto, user),
+    ).resolves.toMatchObject({ phone: '0912345678' });
     expect(service.update).toHaveBeenCalledWith('tenant-1', updateDto, user.id);
   });
 
@@ -90,8 +92,12 @@ describe('TenantsController', () => {
   });
 
   it('propagates service exceptions', async () => {
-    service.remove.mockRejectedValue(new ConflictException('Tenant has active contracts.'));
+    service.remove.mockRejectedValue(
+      new ConflictException('Tenant has active contracts.'),
+    );
 
-    await expect(controller.remove('tenant-1', user)).rejects.toBeInstanceOf(ConflictException);
+    await expect(controller.remove('tenant-1', user)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
   });
 });

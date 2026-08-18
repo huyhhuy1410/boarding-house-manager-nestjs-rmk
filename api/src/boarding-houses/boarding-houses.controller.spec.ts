@@ -25,7 +25,10 @@ describe('BoardingHousesController', () => {
     electricityUnitPrice: 3500,
     waterUnitPrice: 30000,
   };
-  const createDto: CreateBoardingHouseDto = { name: 'An Tam', address: '123 Main St' };
+  const createDto: CreateBoardingHouseDto = {
+    name: 'An Tam',
+    address: '123 Main St',
+  };
   const updateDto: UpdateBoardingHouseDto = { electricityUnitPrice: 4000 };
 
   beforeEach(async () => {
@@ -76,20 +79,28 @@ describe('BoardingHousesController', () => {
   it('update delegates id, user id and dto to the service', async () => {
     service.update.mockResolvedValue(house);
 
-    await expect(controller.update('house-1', user, updateDto)).resolves.toEqual(house);
+    await expect(
+      controller.update('house-1', user, updateDto),
+    ).resolves.toEqual(house);
     expect(service.update).toHaveBeenCalledWith('house-1', user.id, updateDto);
   });
 
   it('remove delegates id and user id to the service', async () => {
     service.remove.mockResolvedValue({ message: 'Boarding house deleted.' });
 
-    await expect(controller.remove('house-1', user)).resolves.toEqual({ message: 'Boarding house deleted.' });
+    await expect(controller.remove('house-1', user)).resolves.toEqual({
+      message: 'Boarding house deleted.',
+    });
     expect(service.remove).toHaveBeenCalledWith('house-1', user.id);
   });
 
   it('propagates service exceptions', async () => {
-    service.findOne.mockRejectedValue(new NotFoundException('Boarding house not found.'));
+    service.findOne.mockRejectedValue(
+      new NotFoundException('Boarding house not found.'),
+    );
 
-    await expect(controller.findOne('missing', user)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(controller.findOne('missing', user)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

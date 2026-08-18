@@ -75,34 +75,49 @@ describe('InvoicesController', () => {
   it('findOne delegates invoice id and user id to the service', async () => {
     service.findOne.mockResolvedValue(invoice);
 
-    await expect(controller.findOne('invoice-1', user)).resolves.toEqual(invoice);
+    await expect(controller.findOne('invoice-1', user)).resolves.toEqual(
+      invoice,
+    );
     expect(service.findOne).toHaveBeenCalledWith('invoice-1', user.id);
   });
 
   it('issue delegates invoice id and user id to the service', async () => {
-    service.issue.mockResolvedValue({ ...invoice, status: InvoiceStatus.ISSUED });
+    service.issue.mockResolvedValue({
+      ...invoice,
+      status: InvoiceStatus.ISSUED,
+    });
 
-    await expect(controller.issue('invoice-1', user)).resolves.toMatchObject({ status: InvoiceStatus.ISSUED });
+    await expect(controller.issue('invoice-1', user)).resolves.toMatchObject({
+      status: InvoiceStatus.ISSUED,
+    });
     expect(service.issue).toHaveBeenCalledWith('invoice-1', user.id);
   });
 
   it('pay delegates invoice id and user id to the service', async () => {
     service.pay.mockResolvedValue({ ...invoice, status: InvoiceStatus.PAID });
 
-    await expect(controller.pay('invoice-1', user)).resolves.toMatchObject({ status: InvoiceStatus.PAID });
+    await expect(controller.pay('invoice-1', user)).resolves.toMatchObject({
+      status: InvoiceStatus.PAID,
+    });
     expect(service.pay).toHaveBeenCalledWith('invoice-1', user.id);
   });
 
   it('void delegates invoice id and user id to the service', async () => {
     service.void.mockResolvedValue({ ...invoice, status: InvoiceStatus.VOID });
 
-    await expect(controller.void('invoice-1', user)).resolves.toMatchObject({ status: InvoiceStatus.VOID });
+    await expect(controller.void('invoice-1', user)).resolves.toMatchObject({
+      status: InvoiceStatus.VOID,
+    });
     expect(service.void).toHaveBeenCalledWith('invoice-1', user.id);
   });
 
   it('propagates service exceptions', async () => {
-    service.void.mockRejectedValue(new ConflictException('Only DRAFT or ISSUED invoices can be voided.'));
+    service.void.mockRejectedValue(
+      new ConflictException('Only DRAFT or ISSUED invoices can be voided.'),
+    );
 
-    await expect(controller.void('invoice-1', user)).rejects.toBeInstanceOf(ConflictException);
+    await expect(controller.void('invoice-1', user)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
   });
 });

@@ -70,13 +70,19 @@ describe('ExpensesController', () => {
   it('findOne delegates expense id and user id to the service', async () => {
     service.findOne.mockResolvedValue(expense);
 
-    await expect(controller.findOne('expense-1', user)).resolves.toEqual(expense);
+    await expect(controller.findOne('expense-1', user)).resolves.toEqual(
+      expense,
+    );
     expect(service.findOne).toHaveBeenCalledWith('expense-1', user.id);
   });
 
   it('propagates service exceptions', async () => {
-    service.findOne.mockRejectedValue(new NotFoundException('Expense not found.'));
+    service.findOne.mockRejectedValue(
+      new NotFoundException('Expense not found.'),
+    );
 
-    await expect(controller.findOne('missing', user)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(controller.findOne('missing', user)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 });

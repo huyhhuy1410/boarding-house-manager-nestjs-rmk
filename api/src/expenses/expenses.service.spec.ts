@@ -35,9 +35,13 @@ describe('ExpensesService', () => {
   };
 
   beforeEach(async () => {
-    authService = { requireApplicationUser: jest.fn().mockResolvedValue(owner) };
+    authService = {
+      requireApplicationUser: jest.fn().mockResolvedValue(owner),
+    };
     prisma = {
-      $transaction: jest.fn(async (callback: (tx: typeof prisma) => unknown) => callback(prisma)),
+      $transaction: jest.fn(async (callback: (tx: typeof prisma) => unknown) =>
+        callback(prisma),
+      ),
       expense: {
         findMany: jest.fn(),
         findFirst: jest.fn(),
@@ -106,7 +110,9 @@ describe('ExpensesService', () => {
 
       expect(prisma.maintenanceRequest.findFirst).not.toHaveBeenCalled();
       expect(prisma.expense.create).toHaveBeenCalledWith({
-        data: expect.not.objectContaining({ maintenanceRequestId: expect.anything() }),
+        data: expect.not.objectContaining({
+          maintenanceRequestId: expect.anything(),
+        }),
       });
     });
 
@@ -125,7 +131,9 @@ describe('ExpensesService', () => {
 
     it('links a valid maintenance request', async () => {
       prisma.boardingHouse.findFirst.mockResolvedValue({ id: 'house-1' });
-      prisma.maintenanceRequest.findFirst.mockResolvedValue({ id: 'request-1' });
+      prisma.maintenanceRequest.findFirst.mockResolvedValue({
+        id: 'request-1',
+      });
       prisma.expense.create.mockResolvedValue(
         expenseRecord({ maintenanceRequestId: 'request-1' }),
       );
@@ -164,7 +172,9 @@ describe('ExpensesService', () => {
     it('returns an owned expense with related data', async () => {
       prisma.expense.findFirst.mockResolvedValue(expenseRecord());
 
-      await expect(service.findOne('expense-1', authUserId)).resolves.toMatchObject({
+      await expect(
+        service.findOne('expense-1', authUserId),
+      ).resolves.toMatchObject({
         id: 'expense-1',
         boardingHouse: { name: 'An Tam' },
       });
@@ -177,9 +187,9 @@ describe('ExpensesService', () => {
     it('does not reveal an expense from another owner', async () => {
       prisma.expense.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne('expense-other', authUserId)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(
+        service.findOne('expense-other', authUserId),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

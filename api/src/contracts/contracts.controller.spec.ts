@@ -63,9 +63,14 @@ describe('ContractsController', () => {
   });
 
   it('endContract delegates contract id and user id to the service', async () => {
-    service.endContract.mockResolvedValue({ ...contract, status: ContractStatus.ENDED });
+    service.endContract.mockResolvedValue({
+      ...contract,
+      status: ContractStatus.ENDED,
+    });
 
-    await expect(controller.endContract('contract-1', user)).resolves.toMatchObject({ status: ContractStatus.ENDED });
+    await expect(
+      controller.endContract('contract-1', user),
+    ).resolves.toMatchObject({ status: ContractStatus.ENDED });
     expect(service.endContract).toHaveBeenCalledWith('contract-1', user.id);
   });
 
@@ -73,8 +78,13 @@ describe('ContractsController', () => {
     const query: GetContractsQueryDto = { status: ContractStatus.ACTIVE };
     service.getContracts.mockResolvedValue([contract]);
 
-    await expect(controller.getContracts(user, query)).resolves.toEqual([contract]);
-    expect(service.getContracts).toHaveBeenCalledWith(user.id, ContractStatus.ACTIVE);
+    await expect(controller.getContracts(user, query)).resolves.toEqual([
+      contract,
+    ]);
+    expect(service.getContracts).toHaveBeenCalledWith(
+      user.id,
+      ContractStatus.ACTIVE,
+    );
   });
 
   it('getContracts passes undefined when no status filter is provided', async () => {
@@ -88,13 +98,19 @@ describe('ContractsController', () => {
   it('getContract delegates contract id and user id to the service', async () => {
     service.getContract.mockResolvedValue(contract);
 
-    await expect(controller.getContract('contract-1', user)).resolves.toEqual(contract);
+    await expect(controller.getContract('contract-1', user)).resolves.toEqual(
+      contract,
+    );
     expect(service.getContract).toHaveBeenCalledWith('contract-1', user.id);
   });
 
   it('propagates service exceptions', async () => {
-    service.endContract.mockRejectedValue(new ConflictException('Contract already ended.'));
+    service.endContract.mockRejectedValue(
+      new ConflictException('Contract already ended.'),
+    );
 
-    await expect(controller.endContract('contract-1', user)).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      controller.endContract('contract-1', user),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });

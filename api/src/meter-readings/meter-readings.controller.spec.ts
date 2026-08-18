@@ -60,7 +60,11 @@ describe('MeterReadingsController', () => {
   });
 
   it('findAll delegates query and user id to the service', async () => {
-    const query: GetMeterReadingsQueryDto = { roomId: 'room-1', month: 7, year: 2026 };
+    const query: GetMeterReadingsQueryDto = {
+      roomId: 'room-1',
+      month: 7,
+      year: 2026,
+    };
     service.findAll.mockResolvedValue([reading]);
 
     await expect(controller.findAll(query, user)).resolves.toEqual([reading]);
@@ -76,8 +80,14 @@ describe('MeterReadingsController', () => {
   });
 
   it('propagates service exceptions', async () => {
-    service.create.mockRejectedValue(new ConflictException('A reading already exists for this room and period.'));
+    service.create.mockRejectedValue(
+      new ConflictException(
+        'A reading already exists for this room and period.',
+      ),
+    );
 
-    await expect(controller.create(createDto, user)).rejects.toBeInstanceOf(ConflictException);
+    await expect(controller.create(createDto, user)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
   });
 });
