@@ -8,6 +8,12 @@ export class MaintenanceRequestResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() roomId!: string;
   @ApiPropertyOptional({ nullable: true }) tenantId!: string | null;
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Tenant snapshot for display; null when the request has no tenant.',
+  })
+  tenant?: { id: string; name: string } | null;
   @ApiProperty({ enum: MaintenanceRequestStatus })
   status!: MaintenanceRequestStatus;
   @ApiPropertyOptional({ enum: MaintenanceRequestChargeTo, nullable: true })
@@ -35,6 +41,7 @@ export type MaintenanceRequestResponseSource = {
   resolvedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  tenant?: { id: string; name: string } | null;
 };
 
 export function mapMaintenanceRequestResponse(
@@ -44,6 +51,7 @@ export function mapMaintenanceRequestResponse(
     id: request.id,
     roomId: request.roomId,
     tenantId: request.tenantId,
+    tenant: request.tenant,
     status: request.status,
     chargeTo: request.chargeTo,
     title: request.title,

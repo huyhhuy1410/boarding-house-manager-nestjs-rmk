@@ -7,6 +7,7 @@ export interface MaintenanceRequest {
   id: string;
   roomId: string;
   tenantId: string | null;
+  tenant?: { id: string; name: string } | null;
   status: MaintenanceStatus;
   chargeTo: MaintenanceChargeTo | null;
   title: string;

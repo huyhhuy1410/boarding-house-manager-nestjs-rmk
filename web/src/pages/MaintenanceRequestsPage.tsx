@@ -40,6 +40,31 @@ const CHARGE_TO_LABEL: Record<MaintenanceChargeTo, string> = {
   OWNER: "Chủ nhà",
 };
 
+// TENANT -> khách tự trả ngoài hệ thống (warning/cam); OWNER -> vào chi phí nhà trọ (blue)
+const CHARGE_TO_COLOR: Record<MaintenanceChargeTo, string> = {
+  TENANT: "bg-[#fff4e5] text-warning",
+  OWNER: "bg-[#e9f5fb] text-blue",
+};
+
+const CHARGE_TO_HINT: Record<MaintenanceChargeTo, string> = {
+  TENANT: "Khách tự trả, không vào hóa đơn",
+  OWNER: "Đã ghi nhận vào chi phí nhà trọ",
+};
+
+const formatVnd = (amount: number) =>
+  `${new Intl.NumberFormat("vi-VN").format(amount)} ₫`;
+
+function ChargeToBadge({ chargeTo }: { chargeTo: MaintenanceChargeTo | null }) {
+  if (!chargeTo) return <span className="text-muted">—</span>;
+  return (
+    <span
+      className={`inline-flex items-center px-2.5 py-1 rounded-full text-[0.7rem] font-extrabold ${CHARGE_TO_COLOR[chargeTo]}`}
+    >
+      {CHARGE_TO_LABEL[chargeTo]}
+    </span>
+  );
+}
+
 export default function MaintenanceRequestsPage() {
   const queryClient = useQueryClient();
   const isMobile = useMediaQuery("(max-width: 767px)");
@@ -102,11 +127,29 @@ export default function MaintenanceRequestsPage() {
   });
 
   const handleCreate = () => {
-    createMutation.mutate(form);
+    const { tenantId, ...rest } = form;
+    // Phòng trống -> tenantId rỗng -> bỏ hẳn field thay vì gửi "" cho API.
+    createMutation.mutate(tenantId ? { ...rest, tenantId } : rest);
   };
+
+  // Chọn phòng là gắn luôn khách thuê của contract đang ACTIVE (nếu có).
+  // Đây là fix A1: trước đây tenantId luôn giữ "" nên request không bao giờ có tenant.
+  const handleRoomChange = (roomId: string) => {
+    const room = rooms?.find((rm) => rm.id === roomId);
+    setForm({
+      ...form,
+      roomId,
+      tenantId: room?.contract?.tenant?.id ?? "",
+    });
+  };
+
+  const selectedRoom = rooms?.find((rm) => rm.id === form.roomId);
 
   const handleResolve = () => {
     if (!resolveForm) return;
+    // Lớp phòng thủ ở FE: "khách thuê chịu phí" mà request không có khách là vô nghĩa.
+    // Server cũng chặn (ConflictException), cái này chỉ để không gửi request thừa.
+    if (resolveForm.chargeTo === "TENANT" && !resolveHasTenant) return;
     resolveMutation.mutate({
       id: resolveForm.id,
       data: {
@@ -119,6 +162,17 @@ export default function MaintenanceRequestsPage() {
 
   // Tên phòng (mã) lookup: request không mang room code, đi qua rooms
   const roomCode = (roomId: string) => rooms?.find((rm) => rm.id === roomId)?.code ?? roomId;
+
+  // Tên khách thuê lookup: BE trả tenant snapshot ({ id, name }) trong payload.
+  // Fallback về "—" khi request không gắn khách.
+  const tenantName = (r: MaintenanceRequest) => r.tenant?.name ?? null;
+
+  // Request đang resolve — để biết nó có khách thuê hay không.
+  const resolveRequest = resolveForm
+    ? requests?.find((r) => r.id === resolveForm.id)
+    : undefined;
+  const resolveHasTenant = Boolean(resolveRequest?.tenantId);
+  const resolveTenantName = resolveRequest?.tenant?.name ?? null;
 
   const filteredRequests = requests?.filter((r) =>
     matchesTerm(searchTerm, r.title, r.description, roomCode(r.roomId)),
@@ -197,6 +251,7 @@ export default function MaintenanceRequestsPage() {
                       <h3 className="m-0 text-base font-bold text-slate">{r.title}</h3>
                       <p className="m-0 mt-0.5 text-[0.78rem] text-muted">
                         Phòng {roomCode(r.roomId)}
+                        {tenantName(r) ? ` · ${tenantName(r)}` : ""}
                       </p>
                     </div>
                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[0.7rem] font-extrabold shrink-0 ${STATUS_COLOR[r.status]}`}>
@@ -207,12 +262,15 @@ export default function MaintenanceRequestsPage() {
                     <p className="m-0 mt-2 text-[0.82rem] text-muted">{r.description}</p>
                   )}
                   <div className="mt-2 grid gap-1 text-[0.82rem] text-muted">
-                    <span>
-                      Người chịu phí: <strong className="text-slate font-semibold">{r.chargeTo ? CHARGE_TO_LABEL[r.chargeTo] : "—"}</strong>
+                    <span className="flex items-center gap-1.5">
+                      Người chịu phí: <ChargeToBadge chargeTo={r.chargeTo} />
                     </span>
                     <span>
-                      Chi phí: <strong className="text-slate font-semibold">{r.actualCost ? `${new Intl.NumberFormat("vi-VN").format(r.actualCost)} ₫` : "—"}</strong>
+                      Chi phí: <strong className="text-slate font-semibold">{r.actualCost === null ? "—" : formatVnd(r.actualCost)}</strong>
                     </span>
+                    {r.chargeTo && r.actualCost !== null && (
+                      <span className="text-[0.72rem]">{CHARGE_TO_HINT[r.chargeTo]}</span>
+                    )}
                     <span className="text-[0.75rem]">
                       {new Date(r.createdAt).toLocaleDateString("vi-VN")}
                     </span>
@@ -232,7 +290,7 @@ export default function MaintenanceRequestsPage() {
                         onClick={() =>
                           setResolveForm({
                             id: r.id,
-                            chargeTo: "TENANT",
+                            chargeTo: "OWNER",
                             estimatedCost: "",
                             actualCost: "",
                           })
@@ -288,19 +346,33 @@ export default function MaintenanceRequestsPage() {
                         <p className="m-0 text-[0.85rem] font-bold text-slate">{r.title}</p>
                         <p className="m-0 mt-0.5 text-muted text-[0.75rem] truncate max-w-[260px]">{r.description}</p>
                       </td>
-                      <td className="p-[15px_13px] text-[0.82rem] text-slate">
-                        {roomCode(r.roomId)}
+                      <td className="p-[15px_13px]">
+                        <p className="m-0 text-[0.82rem] text-slate">
+                          {roomCode(r.roomId)}
+                        </p>
+                        {tenantName(r) && (
+                          <p className="m-0 mt-0.5 text-[0.72rem] text-muted">
+                            {tenantName(r)}
+                          </p>
+                        )}
                       </td>
                       <td className="p-[15px_13px]">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[0.7rem] font-extrabold ${STATUS_COLOR[r.status]}`}>
                           {STATUS_LABEL[r.status]}
                         </span>
                       </td>
-                      <td className="p-[15px_13px] text-[0.82rem] text-slate">
-                        {r.chargeTo ? CHARGE_TO_LABEL[r.chargeTo] : "—"}
+                      <td className="p-[15px_13px]">
+                        <ChargeToBadge chargeTo={r.chargeTo} />
                       </td>
-                      <td className="p-[15px_13px] text-[0.82rem] text-slate">
-                        {r.actualCost ? `${new Intl.NumberFormat("vi-VN").format(r.actualCost)} ₫` : "—"}
+                      <td className="p-[15px_13px]">
+                        <p className="m-0 text-[0.82rem] text-slate">
+                          {r.actualCost === null ? "—" : formatVnd(r.actualCost)}
+                        </p>
+                        {r.chargeTo && r.actualCost !== null && (
+                          <p className="m-0 mt-0.5 text-[0.7rem] text-muted">
+                            {CHARGE_TO_HINT[r.chargeTo]}
+                          </p>
+                        )}
                       </td>
                       <td className="p-[15px_13px] text-[0.82rem] text-muted">
                         {new Date(r.createdAt).toLocaleDateString("vi-VN")}
@@ -321,7 +393,7 @@ export default function MaintenanceRequestsPage() {
                               onClick={() =>
                                 setResolveForm({
                                   id: r.id,
-                                  chargeTo: "TENANT",
+                                  chargeTo: "OWNER",
                                   estimatedCost: "",
                                   actualCost: "",
                                 })
@@ -367,22 +439,32 @@ export default function MaintenanceRequestsPage() {
       {showForm && (
         <Modal title="Tạo yêu cầu sửa chữa" onClose={() => setShowForm(false)}>
           <div className="flex flex-col gap-4">
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[0.8rem] font-bold text-slate">Phòng</span>
-              <select
-                value={form.roomId}
-                onChange={(e) => setForm({ ...form, roomId: e.target.value })}
-                className="border border-border rounded-btn bg-white px-3 h-[44px] text-slate"
-                required
-              >
-                <option value="">— Chọn phòng —</option>
-                {rooms?.map((room) => (
-                  <option key={room.id} value={room.id}>
-                    {room.code} {room.contract?.tenant?.name ? `(${room.contract.tenant.name})` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="flex flex-col gap-1.5">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[0.8rem] font-bold text-slate">Phòng</span>
+                <select
+                  value={form.roomId}
+                  onChange={(e) => handleRoomChange(e.target.value)}
+                  className="border border-border rounded-btn bg-white px-3 h-[44px] text-slate"
+                  required
+                >
+                  <option value="">— Chọn phòng —</option>
+                  {rooms?.map((room) => (
+                    <option key={room.id} value={room.id}>
+                      {room.code} {room.contract?.tenant?.name ? `(${room.contract.tenant.name})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {/* Hint nằm NGOÀI label để accessible name của select vẫn là "Phòng". */}
+              {selectedRoom && (
+                <p className="m-0 text-[0.75rem] text-muted">
+                  {selectedRoom.contract?.tenant
+                    ? `Khách thuê: ${selectedRoom.contract.tenant.name}`
+                    : "Phòng đang trống — yêu cầu sẽ không gắn khách thuê."}
+                </p>
+              )}
+            </div>
             <label className="flex flex-col gap-1.5">
               <span className="text-[0.8rem] font-bold text-slate">Tiêu đề</span>
               <input
@@ -421,6 +503,14 @@ export default function MaintenanceRequestsPage() {
       {resolveForm && (
         <Modal title="Hoàn thành sửa chữa" onClose={() => setResolveForm(null)}>
           <div className="flex flex-col gap-4">
+            {resolveRequest && (
+              <p className="m-0 text-[0.82rem] text-slate">
+                Phòng {roomCode(resolveRequest.roomId)} ·{" "}
+                {resolveHasTenant
+                  ? `Khách thuê: ${resolveTenantName ?? "—"}`
+                  : "Phòng trống — không có khách thuê"}
+              </p>
+            )}
             <label className="flex flex-col gap-1.5">
               <span className="text-[0.8rem] font-bold text-slate">Người chịu phí</span>
               <select
@@ -428,12 +518,18 @@ export default function MaintenanceRequestsPage() {
                 onChange={(e) =>
                   setResolveForm({ ...resolveForm, chargeTo: e.target.value as MaintenanceChargeTo })
                 }
-                className="border border-border rounded-btn bg-white px-3 h-[44px] text-slate"
+                disabled={!resolveHasTenant}
+                className="border border-border rounded-btn bg-white px-3 h-[44px] text-slate disabled:bg-slate-100 disabled:text-muted"
               >
                 <option value="TENANT">Khách thuê</option>
                 <option value="OWNER">Chủ nhà</option>
               </select>
             </label>
+            <p className="m-0 text-[0.75rem] text-muted bg-[#f7f9fa] border border-border rounded-btn p-2.5">
+              {resolveForm.chargeTo === "TENANT"
+                ? "Khách thuê thanh toán trực tiếp cho bên sửa chữa. Chi phí này KHÔNG được cộng vào hóa đơn tháng; yêu cầu chỉ được lưu lại làm lịch sử sửa chữa của phòng."
+                : "Chủ nhà chịu phí. Nếu chi phí thực tế > 0, hệ thống tự tạo một khoản chi (Expense) loại MAINTENANCE cho nhà trọ."}
+            </p>
             <div className="grid grid-cols-2 gap-4">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[0.8rem] font-bold text-slate">Chi phí dự kiến (VNĐ)</span>
