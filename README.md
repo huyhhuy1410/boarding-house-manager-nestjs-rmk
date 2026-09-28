@@ -19,8 +19,8 @@ After building an initial full-stack prototype in Express.js ([`boarding-house-m
 1. **Vertical Slice Architecture & Dependency Injection**: Enforcing clear module boundaries (`auth`, `houses`, `rooms`, `tenants`, `meters`, `invoices`, `maintenance`).
 2. **Strict Financial Data Types**: Handling all monetary amounts in **integer VND** to prevent floating-point rounding errors.
 3. **State Machine Lifecycles**: Strict invoice state transitions (`DRAFT → ISSUED → PAID`) and maintenance request lifecycles (`OPEN → IN_PROGRESS → RESOLVED`).
-4. **Ownership Security**: Multi-tenant authorization guards enforcing that landlords can only access and modify their own properties.
-5. **Telegram Bot Webhook**: Integrating Telegram `/bill` commands for instant tenant invoice lookups and notification delivery.
+4. **Ownership Security**: A Supabase JWKS guard resolves the authenticated owner, and every repository query is scoped to that `ownerId`, so one landlord cannot reach another landlord’s houses, rooms, contracts, or invoices. The isolation unit is the owner account, not a multi-tenant SaaS model.
+5. **Invoices and Utilities**: Automated monthly utility billing from meter readings, an invoice lifecycle of Draft → Issued → Paid → Void, and a landlord dashboard.
 
 ---
 
@@ -56,7 +56,7 @@ graph TD
 3. **Telegram Bot Integration (`/bill`)**
    - Webhook handler authenticating `TELEGRAM_CHAT_ID`, fetching current room invoice status, and formatting instant copyable text receipts for messaging apps.
 4. **Automated Testing & API Specs**
-   - Includes Playwright integration test scripts, NestJS unit tests, and interactive Swagger OpenAPI documentation (`/api/docs`).
+   - Includes 21 NestJS unit test files covering the services and the auth guard, and interactive Swagger OpenAPI documentation (`/api/docs`).
 
 ---
 
@@ -160,3 +160,14 @@ boarding-house-manager-nestjs-rmk/
 ## 📄 License & Provenance Notice
 
 This repository is an **independent software project** created by Vo Quang Huy. It is designed for technical demonstration and real-world workflow automation. No confidential credentials or proprietary third-party code are included.
+
+---
+
+## ⚠️ Known Limitations
+
+These are open items, not hidden behaviour. They are listed so a reviewer does not have to read the code to find them.
+
+* **No message queue or background job processing.** There is no BullMQ, no queue worker, and no `Queue` facade usage. Jobs that would belong on a queue (notification delivery, PDF invoices) run inline in the request.
+* **No request-context or tenant-context middleware.** `AsyncLocalStorage` and any provider that resolves the current owner once per request do not exist. Owner isolation is achieved by repeating `ownerId` scoping inside every service method, which means a future query that forgets the scope silently leaks data. A request-scoped context object would remove that footgun.
+* **No Playwright suite.** `tests/visual-audit.cjs` loads `playwright-core` from an external temp path and screenshots a static page; it is a local viewport audit, not an integration or UI test suite. The real test evidence is the 21 `*.spec.ts` files run by Jest.
+* **No authentication on the Express variant's reservation path** in the companion `boarding-house-manager` project; the NestJS variant is the one with the JWKS guard.
