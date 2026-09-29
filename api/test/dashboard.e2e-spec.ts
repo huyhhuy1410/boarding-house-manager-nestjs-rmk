@@ -36,7 +36,12 @@ describe('Dashboard (e2e)', () => {
       .expect(201);
     const contract = await http(app)
       .post('/contracts')
-      .send({ roomId: room.body.id, tenantId: tenant.body.id, startsAt: '2026-08-01T00:00:00.000Z', deposit: 0 })
+      .send({
+        roomId: room.body.id,
+        tenantId: tenant.body.id,
+        startsAt: '2026-08-01T00:00:00.000Z',
+        deposit: 0,
+      })
       .expect(201);
 
     roomId = room.body.id;
@@ -59,6 +64,10 @@ describe('Dashboard (e2e)', () => {
   });
 
   it('counts PAID invoices as revenue', async () => {
+    // Revenue is money actually collected, so it sums PAID invoices only —
+    // DRAFT and ISSUED work is deliberately excluded. The expected total is
+    // written out from the unit prices so a change in the calculation is
+    // visible here rather than silently absorbed.
     await http(app)
       .post('/meter-readings')
       .send({ roomId, month: 8, year: 2026, electricity: 100, water: 50 })
@@ -67,12 +76,8 @@ describe('Dashboard (e2e)', () => {
       .post('/invoices')
       .send({ contractId, month: 8, year: 2026 })
       .expect(201);
-    await http(app)
-      .post(`/invoices/${invoice.body.id}/issue`)
-      .expect(201);
-    await http(app)
-      .post(`/invoices/${invoice.body.id}/pay`)
-      .expect(201);
+    await http(app).post(`/invoices/${invoice.body.id}/issue`).expect(201);
+    await http(app).post(`/invoices/${invoice.body.id}/pay`).expect(201);
 
     const stats = await http(app).get('/dashboard').expect(200);
     expect(stats.body.paidInvoices).toBe(1);

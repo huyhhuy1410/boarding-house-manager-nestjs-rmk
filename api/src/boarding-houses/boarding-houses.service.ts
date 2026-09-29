@@ -54,6 +54,8 @@ export class BoardingHousesService {
   async update(id: string, authUserId: string, dto: UpdateBoardingHouseDto) {
     const owner = await this.authService.requireApplicationUser(authUserId);
 
+    // The owner-scoped read is the authorization check; the update by `id`
+    // then only ever touches a row this owner has already proven they own.
     const house = await this.prisma.boardingHouse.findFirst({
       where: { id, ownerId: owner.id },
     });
@@ -79,6 +81,11 @@ export class BoardingHousesService {
     return mapBoardingHouseResponse(updated);
   }
 
+  /**
+   * Deleting a house cascades to its rooms, contracts, invoices and expenses
+   * through the schema's onDelete rules. There is no "soft delete" because a
+   * house with paid invoices is history worth keeping, not something to hide.
+   */
   async remove(id: string, authUserId: string) {
     const owner = await this.authService.requireApplicationUser(authUserId);
 

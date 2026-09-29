@@ -13,6 +13,16 @@ export class ExpensesService {
     private readonly authService: AuthService,
     private readonly prisma: PrismaService,
   ) {}
+  /**
+   * An expense is owner-side cost. It can optionally point at the maintenance
+   * request that caused it, but only a request inside the same house as the
+   * expense — otherwise a cross-house link would let one owner read another's
+   * maintenance data through this response.
+   *
+   * Note: a request resolved with `chargeTo: OWNER` already created an
+   * expense automatically, so attaching another one here is possible today.
+   * A unique constraint on `maintenanceRequestId` would close that.
+   */
   async create(dto: CreateExpenseDto, authUserId: string) {
     const owner = await this.authService.requireApplicationUser(authUserId);
     return this.prisma.$transaction(async (tx) => {
@@ -60,6 +70,9 @@ export class ExpensesService {
           title: dto.title,
           description: dto.description,
           amount: dto.amount,
+          // The date the money was actually spent is client-supplied on
+          // purpose: a landlord back-fills last month's bill today, and the
+          // server clock would file it under the wrong month.
           spentAt: new Date(dto.spentAt),
         },
       });
