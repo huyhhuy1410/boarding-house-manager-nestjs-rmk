@@ -22,6 +22,8 @@ function App() {
         {/* Protected routes */}
         <Route
           element={
+            // A pathless layout route: the guard runs once and every child
+            // page renders inside Layout's <Outlet />.
             <ProtectedRoute>
               <Layout />
             </ProtectedRoute>
