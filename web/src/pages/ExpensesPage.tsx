@@ -12,6 +12,7 @@ import { MoneyInput } from "../components/MoneyInput";
 import { SearchInput } from "../components/SearchInput";
 import { matchesTerm } from "../components/search";
 import { Modal, ModalActions, MutationError } from "../components/Modal";
+import { getApiErrorMessage } from "../api/errors";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 
 const CATEGORY_LABELS: Record<ExpenseCategory, string> = {
@@ -167,7 +168,7 @@ export default function ExpensesPage() {
 
         {error ? (
           <div className="bg-[#fff5f4] border border-[#ffd5d2] rounded-btn p-4">
-            <p className="text-danger text-sm font-bold m-0">Không thể tải dữ liệu: {(error as Error).message}</p>
+            <p className="text-danger text-sm font-bold m-0">Không thể tải dữ liệu: {getApiErrorMessage(error)}</p>
           </div>
         ) : expenses && expenses.length === 0 ? (
           <div className="bg-card border border-border rounded-card p-12 text-center shadow-card">
@@ -341,7 +342,7 @@ export default function ExpensesPage() {
             </div>
 
             {/* Error */}
-            {mutation.error && <MutationError error={mutation.error} />}
+            {mutation.isError && <MutationError error={mutation.error} />}
 
             {/* Actions */}
             <ModalActions

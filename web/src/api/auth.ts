@@ -1,5 +1,5 @@
 import apiClient from "./client";
-import type { LoginRequest, LoginResponse } from "../types/auth";
+import type { LoginRequest, LoginResponse, User } from "../types/auth";
 
 // Supabase auth endpoint (theo requests.http)
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -19,14 +19,18 @@ export const login = async (
     },
   );
 
+  // Supabase answers a wrong password with 4xx and a machine-readable body;
+  // a plain message keeps the login form readable without leaking which of
+  // email or password was wrong.
   if (!response.ok) {
-    throw new Error("Login failed");
+    throw new Error("Email hoặc mật khẩu không đúng.");
   }
 
   return response.json();
 };
 
-export const getCurrentUser = async () => {
-  const response = await apiClient.get("/auth/me");
+/** The application `User` (not the Supabase auth user) behind the current token. */
+export const getCurrentUser = async (): Promise<User> => {
+  const response = await apiClient.get<User>("/auth/me");
   return response.data;
 };

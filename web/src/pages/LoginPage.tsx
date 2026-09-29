@@ -4,17 +4,18 @@ import { login } from "../api/auth";
 import type { LoginRequest } from "../types/auth";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("test@gmail.com");
-  const [password, setPassword] = useState("835114");
+  // Start empty: a pre-filled demo account in the source is a credential
+  // left in version control, and a signed-in user must type their own.
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   const loginMutation = useMutation({
     mutationFn: (credentials: LoginRequest) => login(credentials),
     onSuccess: (data) => {
+      // Full navigation (not client-side routing) so every provider and the
+      // router boot against a state that already has the token.
       localStorage.setItem("access_token", data.access_token);
       window.location.href = "/";
-    },
-    onError: (error) => {
-      alert("Đăng nhập thất bại: " + error.message);
     },
   });
 
@@ -75,14 +76,14 @@ export default function LoginPage() {
           </button>
 
           {loginMutation.isError && (
-            <p className="text-danger text-sm text-center mt-2 font-semibold">
-              Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.
+            <p className="text-danger text-sm text-center mt-2 font-semibold" role="alert">
+              {loginMutation.error.message}
             </p>
           )}
         </form>
 
         <p className="text-[0.78rem] text-muted text-center mt-[18px]">
-          Tài khoản thử nghiệm: test@gmail.com / 835114
+          Tài khoản do Supabase quản lý. Liên hệ chủ nhà nếu bạn chưa có tài khoản.
         </p>
       </section>
 

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Modal, ModalActions, MutationError } from "../components/Modal";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { getApiErrorMessage } from "../api/errors";
 import { fetchRooms } from "../api/room";
 import { fetchMeterReadings, createMeterReading, type CreateMeterReadingDto } from "../api/meter-reading";
 
@@ -25,6 +27,7 @@ export default function MeterReadingsPage() {
   const [selectedRoomId, setSelectedRoomId] = useState<string>("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<CreateFormState>(() => emptyForm(""));
+  const isMobile = useMediaQuery("(max-width: 767px)");
 
   const { data: rooms } = useQuery({
     queryKey: ["rooms"],
@@ -44,7 +47,9 @@ export default function MeterReadingsPage() {
   const createMutation = useMutation({
     mutationFn: (data: CreateMeterReadingDto) => createMeterReading(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["meter-readings", selectedRoomId] });
+      // Form cho phép ghi chỉ số cho phòng khác với phòng đang xem, nên
+      // invalidate toàn bộ nhánh ["meter-readings", ...] thay vì chỉ phòng hiện tại.
+      queryClient.invalidateQueries({ queryKey: ["meter-readings"] });
       setShowForm(false);
       setForm(emptyForm(selectedRoomId));
     },
@@ -65,6 +70,8 @@ export default function MeterReadingsPage() {
     });
   };
 
+  // Mirrors the server-side DTO rules so an obviously invalid form never
+  // round-trips to get a 400 back.
   const createDisabled =
     !form.roomId ||
     !form.month ||
@@ -138,11 +145,39 @@ export default function MeterReadingsPage() {
           </div>
         ) : error ? (
           <div className="bg-[#fff5f4] border border-[#ffd5d2] rounded-btn p-4">
-            <p className="text-danger text-sm font-bold m-0">Không thể tải dữ liệu: {(error as Error).message}</p>
+            <p className="text-danger text-sm font-bold m-0">
+              Không thể tải dữ liệu: {getApiErrorMessage(error, "Không thể tải chỉ số.")}
+            </p>
           </div>
         ) : readings && readings.length === 0 ? (
           <div className="bg-card border border-border rounded-card p-12 text-center shadow-card">
             <p className="text-muted text-sm m-0">Chưa có chỉ số nào cho phòng này.</p>
+          </div>
+        ) : isMobile ? (
+          // Card list on phones: the table needs ~500px and would scroll
+          // sideways on a 375px viewport.
+          <div className="flex flex-col gap-3">
+            {readings?.map((reading) => (
+              <article key={reading.id} className="border border-border rounded-card bg-card shadow-card p-4">
+                <h3 className="m-0 text-base font-bold text-slate">
+                  Kỳ {reading.month}/{reading.year}
+                </h3>
+                <dl className="m-0 mt-2 grid grid-cols-2 gap-y-1 text-[0.82rem]">
+                  <dt className="text-muted">Điện</dt>
+                  <dd className="m-0 text-right font-bold text-slate">
+                    {reading.electricity.toLocaleString("vi-VN")} kWh
+                  </dd>
+                  <dt className="text-muted">Nước</dt>
+                  <dd className="m-0 text-right font-bold text-slate">
+                    {reading.water.toLocaleString("vi-VN")} m³
+                  </dd>
+                  <dt className="text-muted">Ngày ghi</dt>
+                  <dd className="m-0 text-right text-muted">
+                    {new Date(reading.createdAt).toLocaleDateString("vi-VN")}
+                  </dd>
+                </dl>
+              </article>
+            ))}
           </div>
         ) : (
           <div className="border border-border rounded-card bg-card shadow-card overflow-hidden">
