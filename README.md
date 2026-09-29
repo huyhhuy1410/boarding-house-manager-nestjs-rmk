@@ -59,6 +59,8 @@ API **không có global prefix** — route gốc là `/rooms`, `/invoices`, ... 
 2. **Ownership Isolation on every read and write** — service nhận `authUserId`, resolve ra `User` nội bộ rồi scope mọi query; trả `404` (không phải `403`) khi tài nguyên không thuộc owner, để không lộ sự tồn tại của dữ liệu người khác.
 3. **Automated Testing & API Specs** — **21 unit test suite** (Jest) cho service/controller/guard, **12 e2e test suite** (Supertest) chạy qua HTTP thật, **13 frontend test suite** (Vitest + RTL), và tài liệu OpenAPI tương tác tại `/docs`. Suite e2e `auth-guard.e2e-spec.ts` boot app với guard JWKS thật để chứng minh mọi route protected trả 401 khi thiếu token.
 
+> Các state transition (`DRAFT → ISSUED → PAID`, `VOID`, và vòng đời maintenance request) được kiểm tra bằng **conditional write**: điều kiện trạng thái nằm trong `WHERE` của chính lệnh `UPDATE`, bên trong `$transaction`. Postgres re-evaluate điều kiện sau khi giành row lock, nên hai request chạy song song không thể cùng thắng. Nhờ vậy một hóa đơn `PAID` không bao giờ có thể bị đổi ngược thành `VOID`.
+
 ---
 
 ## 🚀 Quick Start (Local Setup)
@@ -270,23 +272,17 @@ boarding-house-manager-nestjs-rmk/
 │   │                                 #   + config/, prisma/, common/, generated/prisma/
 │   ├── prisma/                       # schema.prisma + migrations/
 │   ├── prisma.config.ts              # Prisma 7 config (datasource.url = DIRECT_URL)
-│   ├── test/                         # e2e specs + shared harness (setup-e2e.ts, jest-e2e.json)
+│   ├── test/                         # 12 e2e specs + shared harness (setup-e2e.ts, jest-e2e.json)
 │   ├── specs/                        # 9 tài liệu API spec dạng markdown
-│   ├── requests.http                 # Kịch bản REST Client đi hết flow thật
 │   └── coverage/                     # Báo cáo coverage gần nhất (sinh bởi npm run test:cov)
 ├── web/                              # React 19 + Vite + TanStack Query Frontend
 │   ├── src/                          # pages/ (10 trang + login), api/, components/, hooks/
 │   ├── tailwind.config.js            # Design tokens (màu, font, radius)
 │   └── vite.config.ts                # Cấu hình Vite + Vitest (jsdom, TZ Asia/Ho_Chi_Minh)
-├── docs/
-│   ├── learning/                     # 10 learning note (tiếng Việt) — 01 NestJS ... 10 E2E
-│   └── adr/                          # 3 Architecture Decision Record
-├── LEARNING_PATH.md                  # Lộ trình học + open items
-├── index.html / app.js / styles.css  # Static prototype ở root
 └── README.md
 ```
 
-> Lưu ý cho người đọc trên GitHub: `.gitignore` của repo này chỉ track `api/`, `web/`, `README.md` và `.gitignore`; `docs/`, `LEARNING_PATH.md`, `AGENTS.md`, `PROJECT_CONTEXT.md` là tài liệu local nên không xuất hiện trên remote.
+> Hai thư mục này có chủ ý **không** nằm trong git: `docs/` (learning notes tiếng Việt + ADR), `LEARNING_PATH.md`, `api/specs/`, `api/requests.http` và file rule của AI agent. Chúng là tài liệu local; người đọc trên GitHub chỉ thấy `api/`, `web/` và README này.
 
 ---
 
@@ -295,7 +291,7 @@ boarding-house-manager-nestjs-rmk/
 | Hạng mục | Số liệu |
 |----------|---------|
 | Backend unit tests | 21 suite / 200 test (`api/src/**/*.spec.ts`, chạy pass 2026-09-29) |
-| Backend e2e tests | 12 suite / 88 test (`api/test/*.e2e-spec.ts`, chạy trên Supabase 2026-09-29) |
+| Backend e2e tests | 12 suite / 80 test (`api/test/*.e2e-spec.ts`, chạy trên Supabase 2026-09-29) |
 | Frontend tests | 13 suite / 87 test (`web/src/**/*.test.tsx`, Vitest + RTL, pass 2026-09-29) |
 | Backend coverage | 79.59% statements, 75.8% branches, 83.04% functions *(chạy 2026-09-29)* |
 | Frontend coverage | 65.88% statements, 52.1% branches, 46.36% functions *(chạy 2026-09-29)* |
