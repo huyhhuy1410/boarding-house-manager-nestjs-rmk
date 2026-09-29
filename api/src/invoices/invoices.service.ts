@@ -249,6 +249,50 @@ export class InvoicesService {
     return mapInvoiceResponse(invoice);
   }
 
+  /**
+   * Re-read after a conditional write matched 0 rows.
+   *
+   * NOT a re-authorization check: ownership is already part of the UPDATE's
+   * WHERE clause, so anything the owner cannot touch arrives here as "not
+   * found". This read only distinguishes the two 404-vs-409 reasons:
+   *  - missing / not owned by this owner -> 404 (throw here)
+   *  - owned but in the wrong state     -> caller throws 409 with the status
+   *
+   * Caller must be inside the same transaction; the value read here is a
+   * diagnostic, not a decision input for a second write.
+   */
+  private async requireOwnedInvoice(
+    tx: Prisma.TransactionClient,
+    id: string,
+    ownerId: string,
+  ) {
+    const existing = await tx.invoice.findFirst({
+      where: {
+        id,
+        contract: {
+          tenant: { ownerId },
+          room: { house: { ownerId } },
+        },
+      },
+      select: { status: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Invoice not found.');
+    }
+
+    return existing;
+  }
+
+  /**
+   * DRAFT -> ISSUED. Sets issuedAt and dueAt = issuedAt + 7 days in the same
+   * UPDATE so the two timestamps can never drift apart.
+   *
+   * The guard lives in the `where` clause instead of an `if` on a prior read:
+   * Postgres re-evaluates the predicate after acquiring the row lock, so two
+   * concurrent issues cannot both match. Read-then-write (findFirst, then
+   * update by id) lets both through.
+   */
   async issue(id: string, authUserId: string) {
     const owner = await this.authService.requireApplicationUser(authUserId);
 
@@ -257,7 +301,7 @@ export class InvoicesService {
     dueAt.setDate(dueAt.getDate() + 7);
 
     return this.prisma.$transaction(async (tx) => {
-      const invoice = await tx.invoice.findFirst({
+      const { count } = await tx.invoice.updateMany({
         where: {
           id,
           status: InvoiceStatus.DRAFT,
@@ -266,14 +310,6 @@ export class InvoicesService {
             room: { house: { ownerId: owner.id } },
           },
         },
-      });
-
-      if (!invoice) {
-        throw new NotFoundException('Invoice not found.');
-      }
-
-      const updatedInvoice = await tx.invoice.update({
-        where: { id },
         data: {
           status: InvoiceStatus.ISSUED,
           issuedAt,
@@ -281,15 +317,32 @@ export class InvoicesService {
         },
       });
 
-      return mapInvoiceResponse(updatedInvoice);
+      if (count === 0) {
+        const existing = await this.requireOwnedInvoice(tx, id, owner.id);
+        throw new ConflictException(
+          `Only DRAFT invoices can be issued (current status: ${existing.status}).`,
+        );
+      }
+
+      const issued = await tx.invoice.findUniqueOrThrow({ where: { id } });
+
+      return mapInvoiceResponse(issued);
     });
   }
 
+  /**
+   * ISSUED -> PAID. paidAt is written by the database, never taken from the
+   * client, so the recorded payment time is trustworthy.
+   *
+   * Same conditional write as issue(): if a concurrent pay() commits first
+   * this one matches 0 rows and returns 409 instead of double-recording
+   * revenue on the dashboard.
+   */
   async pay(id: string, authUserId: string) {
     const owner = await this.authService.requireApplicationUser(authUserId);
 
     return this.prisma.$transaction(async (tx) => {
-      const invoice = await tx.invoice.findFirst({
+      const { count } = await tx.invoice.updateMany({
         where: {
           id,
           status: InvoiceStatus.ISSUED,
@@ -298,47 +351,60 @@ export class InvoicesService {
             room: { house: { ownerId: owner.id } },
           },
         },
-      });
-
-      if (!invoice) {
-        throw new NotFoundException('Invoice not found.');
-      }
-
-      const updatedInvoice = await tx.invoice.update({
-        where: { id },
         data: {
           status: InvoiceStatus.PAID,
           paidAt: new Date(),
         },
       });
 
-      return mapInvoiceResponse(updatedInvoice);
+      if (count === 0) {
+        const existing = await this.requireOwnedInvoice(tx, id, owner.id);
+        throw new ConflictException(
+          `Only ISSUED invoices can be paid (current status: ${existing.status}).`,
+        );
+      }
+
+      const paid = await tx.invoice.findUniqueOrThrow({ where: { id } });
+
+      return mapInvoiceResponse(paid);
     });
   }
 
+  /**
+   * DRAFT | ISSUED -> VOID, the exit branch. VOID is terminal: no transition
+   * lists it as a source state, so a voided invoice can never be re-issued,
+   * paid or voided again.
+   *
+   * The conditional write is what prevents a concurrent pay() from being
+   * undone: once pay() commits, the row is PAID and this UPDATE matches 0
+   * rows, so money already collected is never flipped to VOID.
+   */
   async void(id: string, authUserId: string) {
     const owner = await this.authService.requireApplicationUser(authUserId);
 
-    const invoice = await this.prisma.invoice.findFirst({
-      where: {
-        id,
-        status: { in: [InvoiceStatus.DRAFT, InvoiceStatus.ISSUED] },
-        contract: {
-          tenant: { ownerId: owner.id },
-          room: { house: { ownerId: owner.id } },
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.invoice.updateMany({
+        where: {
+          id,
+          status: { in: [InvoiceStatus.DRAFT, InvoiceStatus.ISSUED] },
+          contract: {
+            tenant: { ownerId: owner.id },
+            room: { house: { ownerId: owner.id } },
+          },
         },
-      },
+        data: { status: InvoiceStatus.VOID },
+      });
+
+      if (count === 0) {
+        const existing = await this.requireOwnedInvoice(tx, id, owner.id);
+        throw new ConflictException(
+          `Only DRAFT or ISSUED invoices can be voided (current status: ${existing.status}).`,
+        );
+      }
+
+      const voided = await tx.invoice.findUniqueOrThrow({ where: { id } });
+
+      return mapInvoiceResponse(voided);
     });
-
-    if (!invoice) {
-      throw new NotFoundException('Invoice not found or cannot be voided.');
-    }
-
-    const updatedInvoice = await this.prisma.invoice.update({
-      where: { id },
-      data: { status: InvoiceStatus.VOID },
-    });
-
-    return mapInvoiceResponse(updatedInvoice);
   }
 }
