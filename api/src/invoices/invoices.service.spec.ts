@@ -47,7 +47,8 @@ describe('InvoicesService', () => {
       create: jest.Mock;
       findFirst: jest.Mock;
       findMany: jest.Mock;
-      update: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
+      updateMany: jest.Mock;
     };
   };
 
@@ -66,7 +67,8 @@ describe('InvoicesService', () => {
         create: jest.fn(),
         findFirst: jest.fn(),
         findMany: jest.fn(),
-        update: jest.fn(),
+        findUniqueOrThrow: jest.fn(),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
     const module: TestingModule = await Test.createTestingModule({
@@ -237,81 +239,69 @@ describe('InvoicesService', () => {
   });
 
   describe('lifecycle', () => {
+    // The state machine is a conditional write: the allowed source `status`
+    // lives in the WHERE clause of the UPDATE, not in a TypeScript `if`
+    // after a read. So these tests assert the `where` passed to updateMany,
+    // and the "wrong state -> 409" cases are driven by mocking the
+    // conditional write to match 0 rows, which is what the database does
+    // when the predicate fails under concurrency.
+    // State machine = conditional write: `status` nằm trong where của
+    // chính lệnh UPDATE, không phải kiểm tra trước rồi update theo id.
     it('issues a draft invoice and sets a seven-day due date', async () => {
-      prisma.invoice.findFirst.mockResolvedValue(
-        invoiceRecord({ status: InvoiceStatus.DRAFT }),
-      );
-      prisma.invoice.update.mockResolvedValue(
+      prisma.invoice.findUniqueOrThrow.mockResolvedValue(
         invoiceRecord({ status: InvoiceStatus.ISSUED }),
       );
 
       await expect(
         service.issue('invoice-1', authUserId),
       ).resolves.toMatchObject({ status: InvoiceStatus.ISSUED });
-      // State machine nằm trong where clause: chỉ DRAFT mới issue được.
-      expect(prisma.invoice.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ status: InvoiceStatus.DRAFT }),
-        }),
-      );
-      expect(prisma.invoice.update).toHaveBeenCalledWith({
-        where: { id: 'invoice-1' },
+      // Guard nằm trong where của updateMany -> atomic, không phải read-then-write.
+      expect(prisma.invoice.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'invoice-1',
+          status: InvoiceStatus.DRAFT,
+          contract: {
+            tenant: { ownerId: owner.id },
+            room: { house: { ownerId: owner.id } },
+          },
+        },
         data: expect.objectContaining({
           status: InvoiceStatus.ISSUED,
           issuedAt: expect.any(Date),
           dueAt: expect.any(Date),
         }),
       });
-      const update = prisma.invoice.update.mock.calls[0][0];
-      expect(update.data.dueAt.getTime() - update.data.issuedAt.getTime()).toBe(
+      const data = prisma.invoice.updateMany.mock.calls[0][0].data;
+      expect(data.dueAt.getTime() - data.issuedAt.getTime()).toBe(
         7 * 24 * 60 * 60 * 1000,
       );
+      // Toàn bộ transition nằm trong đúng một transaction.
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     });
 
     it('pays an issued invoice and sets paidAt', async () => {
-      prisma.invoice.findFirst.mockResolvedValue(
-        invoiceRecord({ status: InvoiceStatus.ISSUED }),
-      );
-      prisma.invoice.update.mockResolvedValue(
+      prisma.invoice.findUniqueOrThrow.mockResolvedValue(
         invoiceRecord({ status: InvoiceStatus.PAID, paidAt: new Date() }),
       );
 
       await expect(service.pay('invoice-1', authUserId)).resolves.toMatchObject(
         { status: InvoiceStatus.PAID },
       );
-      // State machine nằm trong where clause: chỉ ISSUED mới pay được.
-      expect(prisma.invoice.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ status: InvoiceStatus.ISSUED }),
-        }),
-      );
-      expect(prisma.invoice.update).toHaveBeenCalledWith({
-        where: { id: 'invoice-1' },
+      expect(prisma.invoice.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'invoice-1',
+          status: InvoiceStatus.ISSUED,
+          contract: {
+            tenant: { ownerId: owner.id },
+            room: { house: { ownerId: owner.id } },
+          },
+        },
         data: { status: InvoiceStatus.PAID, paidAt: expect.any(Date) },
       });
     });
 
-    it('rejects issuing an invoice that is not found in DRAFT state', async () => {
-      prisma.invoice.findFirst.mockResolvedValue(null);
-      await expect(
-        service.issue('invoice-1', authUserId),
-      ).rejects.toBeInstanceOf(NotFoundException);
-      expect(prisma.invoice.update).not.toHaveBeenCalled();
-    });
-
-    it('rejects paying an invoice that is not found in ISSUED state', async () => {
-      prisma.invoice.findFirst.mockResolvedValue(null);
-      await expect(service.pay('invoice-1', authUserId)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
-      expect(prisma.invoice.update).not.toHaveBeenCalled();
-    });
-
     it('voids a draft or issued invoice', async () => {
-      prisma.invoice.findFirst.mockResolvedValue(
-        invoiceRecord({ status: InvoiceStatus.DRAFT }),
-      );
-      prisma.invoice.update.mockResolvedValue(
+      prisma.invoice.findUniqueOrThrow.mockResolvedValue(
         invoiceRecord({ status: InvoiceStatus.VOID }),
       );
 
@@ -319,25 +309,115 @@ describe('InvoicesService', () => {
         service.void('invoice-1', authUserId),
       ).resolves.toMatchObject({ status: InvoiceStatus.VOID });
       // State machine nằm trong where clause: chỉ DRAFT/ISSUED mới void được.
-      expect(prisma.invoice.findFirst).toHaveBeenCalledWith(
+      expect(prisma.invoice.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'invoice-1',
+          status: { in: [InvoiceStatus.DRAFT, InvoiceStatus.ISSUED] },
+          contract: {
+            tenant: { ownerId: owner.id },
+            room: { house: { ownerId: owner.id } },
+          },
+        },
+        data: { status: InvoiceStatus.VOID },
+      });
+    });
+
+    it('rejects issuing an invoice outside the owner scope with a 404', async () => {
+      prisma.invoice.updateMany.mockResolvedValue({ count: 0 });
+      prisma.invoice.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.issue('invoice-1', authUserId),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.invoice.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+
+    it('rejects paying an invoice outside the owner scope with a 404', async () => {
+      prisma.invoice.updateMany.mockResolvedValue({ count: 0 });
+      prisma.invoice.findFirst.mockResolvedValue(null);
+
+      await expect(service.pay('invoice-1', authUserId)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.invoice.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+
+    it('rejects voiding an invoice outside the owner scope with a 404', async () => {
+      prisma.invoice.updateMany.mockResolvedValue({ count: 0 });
+      prisma.invoice.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.void('invoice-1', authUserId),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.invoice.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [
+        'issue',
+        InvoiceStatus.ISSUED,
+        'Only DRAFT invoices can be issued (current status: ISSUED).',
+      ],
+      [
+        'pay',
+        InvoiceStatus.DRAFT,
+        'Only ISSUED invoices can be paid (current status: DRAFT).',
+      ],
+      [
+        'void',
+        InvoiceStatus.PAID,
+        'Only DRAFT or ISSUED invoices can be voided (current status: PAID).',
+      ],
+      [
+        'void',
+        InvoiceStatus.VOID,
+        'Only DRAFT or ISSUED invoices can be voided (current status: VOID).',
+      ],
+    ])(
+      // Table: [action, status the row currently has, expected message].
+      // Each row is a transition whose source state is not allowed, so the
+      // conditional write matches 0 rows while the owner is correct -> 409.
+      'rejects %s on an invoice in the wrong state with a 409',
+      async (action, status, message) => {
+        // Cổng atomic không match (count === 0) và record vẫn thuộc owner ->
+        // sai state, không phải sai quyền -> 409 kèm status hiện tại.
+        prisma.invoice.updateMany.mockResolvedValue({ count: 0 });
+        prisma.invoice.findFirst.mockResolvedValue({ status });
+
+        const call = () =>
+          action === 'issue'
+            ? service.issue('invoice-1', authUserId)
+            : action === 'pay'
+              ? service.pay('invoice-1', authUserId)
+              : service.void('invoice-1', authUserId);
+
+        await expect(call()).rejects.toBeInstanceOf(ConflictException);
+        await expect(call()).rejects.toThrow(message);
+        expect(prisma.invoice.findUniqueOrThrow).not.toHaveBeenCalled();
+      },
+    );
+
+    it('never voids a PAID invoice even when the guard does not match', async () => {
+      // The old void() read the status, then updated by `id` outside a
+      // transaction, so a pay() running concurrently could be overwritten
+      // with VOID. With a conditional write, PAID is never a source state
+      // of VOID, so a collected payment can not be un-collected.
+      prisma.invoice.updateMany.mockResolvedValue({ count: 0 });
+      prisma.invoice.findFirst.mockResolvedValue({
+        status: InvoiceStatus.PAID,
+      });
+
+      await expect(
+        service.void('invoice-1', authUserId),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
+          data: { status: InvoiceStatus.VOID },
           where: expect.objectContaining({
             status: { in: [InvoiceStatus.DRAFT, InvoiceStatus.ISSUED] },
           }),
         }),
       );
-      expect(prisma.invoice.update).toHaveBeenCalledWith({
-        where: { id: 'invoice-1' },
-        data: { status: InvoiceStatus.VOID },
-      });
-    });
-
-    it('rejects voiding an invoice that is not found in DRAFT or ISSUED state', async () => {
-      prisma.invoice.findFirst.mockResolvedValue(null);
-      await expect(
-        service.void('invoice-1', authUserId),
-      ).rejects.toBeInstanceOf(NotFoundException);
-      expect(prisma.invoice.update).not.toHaveBeenCalled();
     });
   });
 

@@ -37,7 +37,12 @@ describe('Invoices (e2e)', () => {
       .expect(201);
     const contract = await http(app)
       .post('/contracts')
-      .send({ roomId: room.body.id, tenantId: tenant.body.id, startsAt: '2026-08-01T00:00:00.000Z', deposit: 0 })
+      .send({
+        roomId: room.body.id,
+        tenantId: tenant.body.id,
+        startsAt: '2026-08-01T00:00:00.000Z',
+        deposit: 0,
+      })
       .expect(201);
 
     roomId = room.body.id;
@@ -66,7 +71,9 @@ describe('Invoices (e2e)', () => {
 
     expect(invoice.body.status).toBe('DRAFT');
     expect(invoice.body.total).toBe(3000000 + 50 * 3500 + 20 * 30000); // 3M + 175k + 600k = 3,775,000
-    const itemTypes = invoice.body.items.map((i: { type: string }) => i.type).sort();
+    const itemTypes = invoice.body.items
+      .map((i: { type: string }) => i.type)
+      .sort();
     expect(itemTypes).toEqual(['ELECTRICITY', 'RENT', 'WATER']);
   });
 
@@ -107,15 +114,99 @@ describe('Invoices (e2e)', () => {
       .expect(400);
   });
 
-  it('rejects paying a draft invoice', async () => {
+  it('rejects paying a draft invoice with 409', async () => {
     const invoice = await http(app)
       .post('/invoices')
       .send({ contractId, month: 8, year: 2026 })
       .expect(201);
-    // issue first, then pay is valid; paying DRAFT directly is not routed.
-    // The DRAFT->pay path is guarded by service (NotFoundException).
-    await http(app)
+    // Hóa đơn tồn tại và thuộc owner, chỉ sai state -> 409 (không phải 404).
+    // 404 chỉ dành cho hóa đơn không tồn tại hoặc thuộc owner khác.
+    const res = await http(app)
       .post(`/invoices/${invoice.body.id}/pay`)
-      .expect(404);
+      .expect(409);
+    expect(res.body.message).toBe(
+      'Only ISSUED invoices can be paid (current status: DRAFT).',
+    );
+  });
+
+  it('rejects issuing an already issued invoice with 409', async () => {
+    const invoice = await http(app)
+      .post('/invoices')
+      .send({ contractId, month: 8, year: 2026 })
+      .expect(201);
+    await http(app).post(`/invoices/${invoice.body.id}/issue`).expect(201);
+
+    const res = await http(app)
+      .post(`/invoices/${invoice.body.id}/issue`)
+      .expect(409);
+    expect(res.body.message).toBe(
+      'Only DRAFT invoices can be issued (current status: ISSUED).',
+    );
+  });
+
+  it('rejects paying an already paid invoice with 409', async () => {
+    const invoice = await http(app)
+      .post('/invoices')
+      .send({ contractId, month: 8, year: 2026 })
+      .expect(201);
+    await http(app).post(`/invoices/${invoice.body.id}/issue`).expect(201);
+    await http(app).post(`/invoices/${invoice.body.id}/pay`).expect(201);
+
+    const res = await http(app)
+      .post(`/invoices/${invoice.body.id}/pay`)
+      .expect(409);
+    expect(res.body.message).toBe(
+      'Only ISSUED invoices can be paid (current status: PAID).',
+    );
+  });
+
+  it('rejects voiding a paid invoice with 409 and keeps it PAID', async () => {
+    // The regression this guards: void() used to read the status, then update
+    // by `id` with no transaction, so a pay() running alongside it could be
+    // overwritten with VOID. Sequenced here instead of raced, which asserts
+    // the same invariant deterministically: once PAID, VOID no longer matches.
+    const invoice = await http(app)
+      .post('/invoices')
+      .send({ contractId, month: 8, year: 2026 })
+      .expect(201);
+    await http(app).post(`/invoices/${invoice.body.id}/issue`).expect(201);
+    await http(app).post(`/invoices/${invoice.body.id}/pay`).expect(201);
+
+    const res = await http(app)
+      .post(`/invoices/${invoice.body.id}/void`)
+      .expect(409);
+    expect(res.body.message).toBe(
+      'Only DRAFT or ISSUED invoices can be voided (current status: PAID).',
+    );
+
+    const still = await http(app)
+      .get(`/invoices/${invoice.body.id}`)
+      .expect(200);
+    expect(still.body.status).toBe('PAID');
+  });
+
+  it('rejects a second void with 409', async () => {
+    const invoice = await http(app)
+      .post('/invoices')
+      .send({ contractId, month: 8, year: 2026 })
+      .expect(201);
+
+    const voided = await http(app)
+      .post(`/invoices/${invoice.body.id}/void`)
+      .expect(201);
+    expect(voided.body.status).toBe('VOID');
+
+    const res = await http(app)
+      .post(`/invoices/${invoice.body.id}/void`)
+      .expect(409);
+    expect(res.body.message).toBe(
+      'Only DRAFT or ISSUED invoices can be voided (current status: VOID).',
+    );
+  });
+
+  it('returns 404 (not 409) for lifecycle calls on an unknown invoice', async () => {
+    await http(app).post('/invoices/nonexistent/issue').expect(404);
+    await http(app).post('/invoices/nonexistent/pay').expect(404);
+    await http(app).post('/invoices/nonexistent/void').expect(404);
   });
 });

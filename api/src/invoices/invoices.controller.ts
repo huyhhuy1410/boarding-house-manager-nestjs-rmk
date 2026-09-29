@@ -63,7 +63,9 @@ export class InvoicesController {
   @Post(':id/issue')
   @ApiOperation({ summary: 'Issue an invoice' })
   @ApiOkResponse({ type: InvoiceResponseDto })
-  @ApiNotFoundResponse({ description: 'Draft invoice not found.' })
+  // 404 = unknown invoice or not yours; 409 = yours, wrong state.
+  @ApiNotFoundResponse({ description: 'Invoice not found.' })
+  @ApiConflictResponse({ description: 'Only DRAFT invoices can be issued.' })
   issue(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.invoicesService.issue(id, user.id);
   }
@@ -71,7 +73,8 @@ export class InvoicesController {
   @Post(':id/pay')
   @ApiOperation({ summary: 'Mark an invoice as paid' })
   @ApiOkResponse({ type: InvoiceResponseDto })
-  @ApiNotFoundResponse({ description: 'Issued invoice not found.' })
+  @ApiNotFoundResponse({ description: 'Invoice not found.' })
+  @ApiConflictResponse({ description: 'Only ISSUED invoices can be paid.' })
   pay(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.invoicesService.pay(id, user.id);
   }
