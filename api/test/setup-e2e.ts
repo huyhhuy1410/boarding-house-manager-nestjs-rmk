@@ -13,7 +13,12 @@
 
 import * as path from 'path';
 import { config as loadEnvFile } from 'dotenv';
-import { CanActivate, ExecutionContext, INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  INestApplication,
+  ValidationPipe,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
@@ -46,12 +51,10 @@ export const AUTH_USER_2 = OWNER_AUTH_USER_ID_B;
  */
 export class TestAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const request = context
-      .switchToHttp()
-      .getRequest<{
-        user: { id: string; email: string };
-        headers: Record<string, string>;
-      }>();
+    const request = context.switchToHttp().getRequest<{
+      user: { id: string; email: string };
+      headers: Record<string, string>;
+    }>();
 
     const requestedId = request.headers['x-auth-user-id'];
     const isOwnerB = requestedId === OWNER_AUTH_USER_ID_B;
@@ -92,6 +95,11 @@ export function getPrisma(app: INestApplication): PrismaService {
 /**
  * Truncate every table so each spec starts from a clean slate. One TRUNCATE
  * statement with CASCADE — fast and deterministic.
+ *
+ * Note: this is a deliberate trade-off. TRUNCATE gives per-test isolation
+ * without transaction rollback, at the cost of wiping the database that
+ * `.env.test` points at (shared with local dev). `jest-e2e.json` pins
+ * maxWorkers to 1 so suites cannot truncate each other mid-run.
  */
 export async function resetDatabase(app: INestApplication): Promise<void> {
   const prisma = getPrisma(app);
@@ -116,7 +124,12 @@ export async function createOwnerUser(
   return prisma.user.upsert({
     where: { authUserId },
     update: {},
-    create: { authUserId, email, name: email.split('@')[0], role: UserRole.OWNER },
+    create: {
+      authUserId,
+      email,
+      name: email.split('@')[0],
+      role: UserRole.OWNER,
+    },
   });
 }
 
