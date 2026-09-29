@@ -106,3 +106,5 @@ Desktop.ini
 tmp/
 temp/
 *.tmp
+web/README.md
+api/README.md
