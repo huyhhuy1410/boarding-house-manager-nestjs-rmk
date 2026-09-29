@@ -1,7 +1,7 @@
 # RentalHub — Boarding House & Rental Property Management System (NestJS & PostgreSQL)
 
-> **NestJS Backend Rearchitecture Workspace (In Progress)**  
-> *A domain-driven rental management backend and mobile-first PWA built with NestJS, TypeScript, Prisma ORM, PostgreSQL (Supabase),*.*
+> **Full-stack rental management backend and mobile-first PWA**  
+> *A domain-driven rental management system built with NestJS, TypeScript, Prisma ORM, PostgreSQL (Supabase), React and Vite.*
 
 [![NestJS](https://img.shields.io/badge/NestJS-10.0-E0234E?style=flat-square&logo=nestjs&logoColor=white)](https://nestjs.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org)
