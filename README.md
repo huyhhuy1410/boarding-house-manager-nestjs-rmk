@@ -1,7 +1,7 @@
 # RentalHub — Boarding House & Rental Property Management System (NestJS & PostgreSQL)
 
 > **NestJS Backend Rearchitecture Workspace (In Progress)**  
-> *A domain-driven rental management backend and mobile-first PWA built with NestJS, TypeScript, Prisma ORM, PostgreSQL (Supabase), and Telegram Bot Integration.*
+> *A domain-driven rental management backend and mobile-first PWA built with NestJS, TypeScript, Prisma ORM, PostgreSQL (Supabase),*.*
 
 [![NestJS](https://img.shields.io/badge/NestJS-10.0-E0234E?style=flat-square&logo=nestjs&logoColor=white)](https://nestjs.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://typescriptlang.org)
@@ -28,7 +28,7 @@ After building an initial full-stack prototype in Express.js ([`boarding-house-m
 
 ```mermaid
 graph TD
-    Client[Client App / Telegram Webhook] --> Guards[JWT Auth & Ownership Guards]
+    Client[Client App] --> Guards[JWT Auth & Ownership Guards]
     Guards --> Nest[NestJS Controllers]
     Nest --> Services[Domain Services & State Machine Logic]
     Services --> Transactions[Prisma Database Transactions]
@@ -39,7 +39,6 @@ graph TD
         Services --> PropertyModule[Houses & Rooms Module]
         Services --> MeterModule[Meter Readings Module]
         Services --> InvoiceModule[Invoice State Machine Module]
-        Services --> TelegramModule[Telegram Webhook Module]
     end
 ```
 
@@ -51,11 +50,7 @@ graph TD
    - Meter readings enforce strict increasing constraints (new reading must be $\ge$ previous reading).
    - Invoices snapshots electricity/water unit rates at issuance time and transition safely: `DRAFT → ISSUED → PAID`.
    - Single invoice per room/month constraint to prevent duplicate billings.
-2. **Room Transfer & Contract Lifecycle**
-   - Executed within database transactions to update tenant room assignments, finalize old room utility balances, and initialize new contract deposits.
-3. **Telegram Bot Integration (`/bill`)**
-   - Webhook handler authenticating `TELEGRAM_CHAT_ID`, fetching current room invoice status, and formatting instant copyable text receipts for messaging apps.
-4. **Automated Testing & API Specs**
+2. **Automated Testing & API Specs**
    - Includes 21 NestJS unit test files covering the services and the auth guard, and interactive Swagger OpenAPI documentation (`/api/docs`).
 
 ---
