@@ -1,81 +1,65 @@
-# React + TypeScript + Vite
+# RentalHub Web — React + Vite + TanStack Query
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend mobile-first cho hệ thống quản lý nhà trọ: **React 19**, **Vite 8**, **TanStack Query 5**, **React Router 7**, **Tailwind CSS 3**, **Axios**. Mỗi trang list hiển thị dạng card trên mobile và dạng table trên desktop (dựa trên `useMediaQuery`).
 
-Currently, two official plugins are available:
+## Scripts
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| Script | Lệnh | Mục đích |
+|--------|------|---------|
+| `npm run dev` | `vite` | Dev server tại `http://localhost:5173`. |
+| `npm run build` | `tsc -b && vite build` | **Type-check + build production.** Script `type-check` của Vite template là no-op ở đây — dùng `npm run build` để bắt lỗi TypeScript. |
+| `npm run lint` | `eslint .` | Lint. |
+| `npm run preview` | `vite preview` | Xem bản build. |
+| `npm test` | `vitest` | **Watch mode.** Dùng khi viết test. |
+| `npm run test:run` | `vitest run` | Chạy một lần rồi thoát — dùng cho CI / kiểm tra nhanh. |
+| `npm run test:coverage` | `vitest run --coverage` | Test + coverage ra `coverage/`. |
 
-## React Compiler
+## Biến môi trường
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Tạo `web/.env` (repo này **không** có `web/.env.example`):
 
-## Expanding the ESLint configuration
+| Biến | Bắt buộc | Dùng ở đâu |
+|------|-----------|-----------|
+| `VITE_SUPABASE_URL` | ✅ | `api/auth.ts` — gọi Supabase `POST /auth/v1/token?grant_type=password` để đăng nhập. |
+| `VITE_SUPABASE_ANON_KEY` | ✅ | Gửi kèm header `apikey` của request đăng nhập. |
+| `VITE_API_URL` | ⬜ | Base URL của NestJS API. Default `http://localhost:3000`. |
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Cấu trúc `src/`
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
+```text
+src/
+├── main.tsx                 # QueryClientProvider (staleTime 5 phút, retry 1) + ReactQueryDevtools
+├── App.tsx                  # Router: /login public, 9 trang protected, catch-all -> /
+├── index.css                # Tailwind directives + @layer base (min-height 44px cho control)
+├── pages/                   # 1 page = 1 feature, kèm *.test.tsx cạnh bên
+│   ├── LoginPage.tsx        # Đăng nhập qua Supabase, lưu access_token vào localStorage
+│   ├── DashboardPage.tsx    # Gọi GET /dashboard (aggregate server-side)
+│   ├── RoomsPage / TenantsPage / ContractsPage / InvoicesPage
+│   ├── BoardingHousesPage / MeterReadingsPage
+│   ├── MaintenanceRequestsPage / ExpensesPage
+├── api/                     # 1 file client axios cho mỗi feature
+│   ├── client.ts            # baseURL = VITE_API_URL, interceptor Bearer + 401 -> /login
+│   └── auth.ts              # login() gọi thẳng Supabase, getCurrentUser() gọi /auth/me
+├── components/              # Layout, ProtectedRoute, Modal, MoneyInput, SearchInput, search.ts
+├── hooks/useMediaQuery.ts   # phân biệt mobile/desktop
+├── types/                   # auth.ts, room.ts
+├── test/setup.ts            # jest-dom, cleanup, mock matchMedia mặc định desktop (1280px)
+└── utils/
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Vài quy ước đáng biết
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+- **Auth**: không có backend login. `LoginPage` lấy `access_token` từ Supabase rồi lưu vào `localStorage["access_token"]`; `api/client.ts` gắn header `Authorization` cho mọi request. `ProtectedRoute` chỉ kiểm tra token có tồn tại; **không có refresh token** — hết hạn thì `401` kích hoạn redirect `/login`.
+- **Styling**: dùng Tailwind utility classes kèm design tokens định nghĩa trong `tailwind.config.js` (màu `teal`/`slate`/`canvas`, `borderRadius.btn`, `shadow.card`, font `Plus Jakarta Sans`). Không có CSS module hay CSS-in-JS.
+- **Server state**: TanStack Query là nguồn dữ liệu duy nhất; sau mỗi mutation đều `invalidateQueries` thay vì cập nhật cache thủ công.
+- **Test**: Vitest + React Testing Library, môi trường `jsdom`, timezone ép `Asia/Ho_Chi_Minh` (trong `vite.config.ts`) để test hiển thị ngày giờ ổn định.
 
 ## Tài liệu học tập (AI Agents)
 
 Xem tóm tắt kiến thức từ các khóa học AI Agents của Google và Kaggle tại đây:
-*   [5-Day AI Agents Intensive Course (11/2025)](file:///D:/Huy's/Coder/personal/update-my-career/personal-projects/boarding-house-manager-nestjs-rmk/web/docs/5-day-ai-agents-intensive.md)
-*   [5-Day AI Agents: Intensive Vibe Coding Course (06/2026)](file:///D:/Huy's/Coder/personal/update-my-career/personal-projects/boarding-house-manager-nestjs-rmk/web/docs/5-day-ai-agents-vibe-coding.md)
+*   [5-Day AI Agents Intensive Course (11/2025)](docs/5-day-ai-agents-intensive.md)
+*   [5-Day AI Agents: Intensive Vibe Coding Course (06/2026)](docs/5-day-ai-agents-vibe-coding.md)
+
+---
+
+Xem thêm: [README gốc](../README.md) · [`api/README.md`](../api/README.md)
