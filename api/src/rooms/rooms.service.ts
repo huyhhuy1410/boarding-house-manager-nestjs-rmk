@@ -79,6 +79,8 @@ export class RoomsService {
 
     return rooms.map((room) =>
       mapRoomResponse({
+        // The response exposes a single `contract`; the query keeps `contracts`
+        // (the relation name) and `take: 1` limits it to the active one.
         ...room,
         contract: room.contracts?.[0],
       } as unknown as any),
@@ -178,6 +180,8 @@ export class RoomsService {
       throw new NotFoundException('Room not found.');
     }
 
+    // Refuse to delete a room that a tenant currently occupies: cascading the
+    // delete would take their contract and invoices with it.
     if (room.contracts.length > 0) {
       throw new ConflictException('Cannot delete room with active contracts.');
     }

@@ -9,6 +9,13 @@ import {
   OWNER_EMAIL,
 } from './setup-e2e';
 
+/**
+ * Contracts (e2e).
+ *
+ * The contract service is the only place that flips a room between VACANT and
+ * OCCUPIED, so every assertion here pairs a contract transition with the room
+ * status it is supposed to cause.
+ */
 describe('Contracts (e2e)', () => {
   let app: INestApplication;
   let roomId: string;
@@ -44,7 +51,12 @@ describe('Contracts (e2e)', () => {
   it('creates a contract and marks the room occupied', async () => {
     const contract = await http(app)
       .post('/contracts')
-      .send({ roomId, tenantId, startsAt: '2026-08-01T00:00:00.000Z', deposit: 1000000 })
+      .send({
+        roomId,
+        tenantId,
+        startsAt: '2026-08-01T00:00:00.000Z',
+        deposit: 1000000,
+      })
       .expect(201);
     expect(contract.body).toMatchObject({ status: 'ACTIVE' });
 
@@ -53,20 +65,37 @@ describe('Contracts (e2e)', () => {
   });
 
   it('rejects a second active contract on the same room', async () => {
+    // One active contract per room is the invariant that makes Room.status
+    // trustworthy, so it is checked on the API rather than only in the DB.
     await http(app)
       .post('/contracts')
-      .send({ roomId, tenantId, startsAt: '2026-08-01T00:00:00.000Z', deposit: 0 })
+      .send({
+        roomId,
+        tenantId,
+        startsAt: '2026-08-01T00:00:00.000Z',
+        deposit: 0,
+      })
       .expect(201);
     await http(app)
       .post('/contracts')
-      .send({ roomId, tenantId, startsAt: '2026-09-01T00:00:00.000Z', deposit: 0 })
+      .send({
+        roomId,
+        tenantId,
+        startsAt: '2026-09-01T00:00:00.000Z',
+        deposit: 0,
+      })
       .expect(409);
   });
 
   it('ends a contract and frees the room', async () => {
     const contract = await http(app)
       .post('/contracts')
-      .send({ roomId, tenantId, startsAt: '2026-08-01T00:00:00.000Z', deposit: 0 })
+      .send({
+        roomId,
+        tenantId,
+        startsAt: '2026-08-01T00:00:00.000Z',
+        deposit: 0,
+      })
       .expect(201);
 
     const endRes = await http(app)

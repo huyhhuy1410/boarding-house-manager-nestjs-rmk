@@ -20,6 +20,11 @@ export class ContractsService {
     private readonly authService: AuthService,
   ) {}
 
+  /**
+   * Creating a contract is the only path that makes a room occupied, so the
+   * contract row and the room's status are written together. The transaction
+   * guarantees a contract never exists on a VACANT room after a failure.
+   */
   async create(dto: CreateContractDto, authUserId: string) {
     const owner = await this.authService.requireApplicationUser(authUserId);
 
@@ -49,6 +54,9 @@ export class ContractsService {
           throw new NotFoundException('Tenant not found.');
         }
 
+        // The room status check is a fast path; the contract lookup below is
+        // the real guard, because `status` is a denormalised flag and a bug
+        // elsewhere could leave it out of sync with the contract table.
         if (room.status === RoomStatus.OCCUPIED) {
           throw new ConflictException('Room already has an active contract.');
         }
@@ -79,6 +87,8 @@ export class ContractsService {
           where: { id: room.id },
           data: { status: RoomStatus.OCCUPIED },
         });
+        // Denormalised on purpose: the room list and dashboard need occupancy
+        // without joining contracts on every row.
 
         return mapContractResponse(contract);
       });
@@ -93,6 +103,10 @@ export class ContractsService {
       throw error;
     }
   }
+  /**
+   * Ending a contract frees the room. `endsAt` is set from the server clock,
+   * not from the client, so the recorded end time is trustworthy.
+   */
   async endContract(id: string, authUserId: string) {
     const owner = await this.authService.requireApplicationUser(authUserId);
 

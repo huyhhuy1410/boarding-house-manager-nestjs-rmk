@@ -122,6 +122,8 @@ export class TenantsService {
       throw new NotFoundException('Tenant not found.');
     }
 
+    // Same reasoning as rooms: a tenant with an active contract still owes
+    // money on it, so the contract (and its invoices) must be ended first.
     if (tenant.contracts.length > 0) {
       throw new ConflictException(
         'Cannot delete tenant with active contracts.',
