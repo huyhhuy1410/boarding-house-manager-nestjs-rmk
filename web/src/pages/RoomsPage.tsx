@@ -4,6 +4,7 @@ import { createRoom, deleteRoom, fetchRooms, updateRoom } from "../api/room";
 import type { RoomDto } from "../types/room";
 import { fetchBoardingHouses, type BoardingHouse } from "../api/boarding-house";
 import { Modal, ModalActions, MutationError } from "../components/Modal";
+import { getApiErrorMessage } from "../api/errors";
 import { MoneyInput } from "../components/MoneyInput";
 import { SearchInput } from "../components/SearchInput";
 import { matchesTerm } from "../components/search";
@@ -177,7 +178,7 @@ export default function RoomsPage() {
 
         {error ? (
           <div className="bg-[#fff5f4] border border-[#ffd5d2] rounded-btn p-4">
-            <p className="text-danger text-sm font-bold m-0">Không thể tải danh sách phòng: {(error as Error).message}</p>
+            <p className="text-danger text-sm font-bold m-0">Không thể tải danh sách phòng: {getApiErrorMessage(error)}</p>
           </div>
         ) : filteredRooms && filteredRooms.length === 0 ? (
           <div className="bg-card border border-border rounded-card p-12 text-center shadow-card">
@@ -241,7 +242,7 @@ export default function RoomsPage() {
 
         {deleteMutation.isError && (
           <p className="mt-4 text-danger text-sm font-bold">
-            {(deleteMutation.error as Error).message || "Không thể xóa phòng."}
+            {deleteMutation.error && getApiErrorMessage(deleteMutation.error, "Không thể xóa phòng.")}
           </p>
         )}
       </div>

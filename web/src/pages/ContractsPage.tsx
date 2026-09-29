@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Modal, ModalActions, MutationError } from "../components/Modal";
+import { getApiErrorMessage } from "../api/errors";
 import { MoneyInput } from "../components/MoneyInput";
 import { SearchInput } from "../components/SearchInput";
 import { matchesTerm } from "../components/search";
@@ -198,7 +199,7 @@ export default function ContractsPage() {
 
         {error ? (
           <div className="bg-[#fff5f4] border border-[#ffd5d2] rounded-btn p-4">
-            <p className="text-danger text-sm font-bold m-0">Không thể tải dữ liệu: {(error as Error).message}</p>
+            <p className="text-danger text-sm font-bold m-0">Không thể tải dữ liệu: {getApiErrorMessage(error)}</p>
           </div>
         ) : filteredContracts && filteredContracts.length === 0 ? (
           <div className="bg-card border border-border rounded-card p-12 text-center shadow-card">
@@ -326,7 +327,7 @@ export default function ContractsPage() {
 
         {endMutation.isError && (
           <p className="mt-4 text-danger text-sm font-bold">
-            {(endMutation.error as Error).message || "Không thể chấm dứt hợp đồng."}
+            {endMutation.error && getApiErrorMessage(endMutation.error, "Không thể chấm dứt hợp đồng.")}
           </p>
         )}
       </div>

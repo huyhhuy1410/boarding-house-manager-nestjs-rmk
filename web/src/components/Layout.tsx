@@ -1,5 +1,7 @@
 import { useState, type ReactElement } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { getCurrentUser } from '../api/auth';
 
 type NavItem = {
   to: string;
@@ -118,6 +120,26 @@ export default function Layout() {
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // The signed-in user is the only source of truth for who is on screen;
+  // a hardcoded name would greet one account with another account's name.
+  // queryFn is wrapped because TanStack Query passes its context as the first
+  // argument, which a bare function reference would receive as a parameter.
+  const { data: user } = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: () => getCurrentUser(),
+    // Identity does not change during a session, so this is fetched once.
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Degrade to a neutral label rather than rendering "undefined" while the
+  // request is in flight or if it fails.
+  const displayName = user?.name?.trim() || user?.email || 'Chủ nhà';
+  const displayInitials = displayName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('') || 'CN';
+
   const handleLogout = () => {
     localStorage.removeItem('access_token');
     navigate('/login');
@@ -147,7 +169,12 @@ export default function Layout() {
         {/* Navigation */}
         <nav className="flex flex-col gap-1.5">
           {NAV_ITEMS.map((item) => (
-            <Link key={item.to} to={item.to} className={navLinkClass(item.to)}>
+            <Link
+              key={item.to}
+              to={item.to}
+              aria-current={isActive(item.to) ? 'page' : undefined}
+              className={navLinkClass(item.to)}
+            >
               {item.icon}
               <span>{item.label}</span>
             </Link>
@@ -158,10 +185,10 @@ export default function Layout() {
         <div className="mt-auto pt-3.5 border-t border-border flex items-center justify-between gap-2.5 px-2">
           <div className="flex items-center gap-2.5">
             <div className="w-[38px] h-[38px] rounded-full bg-soft text-teal flex items-center justify-center font-extrabold text-sm">
-              HN
+              {displayInitials}
             </div>
             <div className="flex flex-col gap-0.5 text-[0.78rem]">
-              <strong className="font-bold text-slate leading-tight">Huy Nguyễn</strong>
+              <strong className="font-bold text-slate leading-tight">{displayName}</strong>
               <small className="text-muted leading-tight">Chủ nhà</small>
             </div>
           </div>

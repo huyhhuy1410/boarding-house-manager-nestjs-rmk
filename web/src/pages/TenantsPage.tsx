@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal, ModalActions, MutationError } from "../components/Modal";
+import { getApiErrorMessage } from "../api/errors";
 import { SearchInput } from "../components/SearchInput";
 import { matchesTerm } from "../components/search";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -136,7 +137,7 @@ export default function TenantsPage() {
 
         {error ? (
           <div className="bg-[#fff5f4] border border-[#ffd5d2] rounded-btn p-4">
-            <p className="text-danger text-sm font-bold m-0">Không thể tải dữ liệu: {(error as Error).message}</p>
+            <p className="text-danger text-sm font-bold m-0">Không thể tải dữ liệu: {getApiErrorMessage(error)}</p>
           </div>
         ) : filteredTenants && filteredTenants.length === 0 ? (
           <div className="bg-card border border-border rounded-card p-12 text-center shadow-card">
@@ -227,7 +228,9 @@ export default function TenantsPage() {
         )}
 
         {deleteMutation.isError && (
-          <p className="mt-4 text-danger text-sm font-bold">{(deleteMutation.error as Error).message || "Không thể xóa khách thuê."}</p>
+          <p className="mt-4 text-danger text-sm font-bold">
+            {getApiErrorMessage(deleteMutation.error, "Không thể xóa khách thuê.")}
+          </p>
         )}
       </div>
 
